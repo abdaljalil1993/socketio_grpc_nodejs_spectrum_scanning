@@ -1,0 +1,466 @@
+syntax = "proto3";
+package sdr_ingestion.v2;
+
+// ─────────── DeviceControl ───────────
+//
+// v2 is a strict superset of v1 on the IQ path. Existing v1 clients can call
+// v2 RPCs and ignore the new fields. New RPCs (SetHarogicConfig) are
+// no-ops for non-Harogic devices.
+
+service DeviceControl {
+  // — Carried forward from v1 —
+
+  // Ask the server which SDR devices are plugged in and ready to use.
+  rpc ListDevices            (ListDevicesRequest)        returns (ListDevicesResponse);
+
+  // Open one device so we can start using it. Returns a session id
+  // that all the other calls below need.
+  rpc OpenDevice             (OpenDeviceRequest)         returns (OpenDeviceResponse);
+
+  // Close the device and free it for someone else to use.
+  rpc CloseDevice            (CloseDeviceRequest)        returns (CloseDeviceResponse);
+
+  // Tune the device to a new center frequency (in Hz).
+  rpc SetFrequency           (SetFrequencyRequest)       returns (SetFrequencyResponse);
+
+  // Change how many IQ samples per second the device produces.
+  rpc SetSampleRate          (SetSampleRateRequest)      returns (SetSampleRateResponse);
+
+  // Change the gain (how loud the radio listens). Pick manual gain or AGC.
+  rpc SetGain                (SetGainRequest)            returns (SetGainResponse);
+
+  // Fix small clock errors on the device, measured in parts per million.
+  rpc SetFrequencyCorrection (SetFreqCorrRequest)        returns (SetFreqCorrResponse);
+
+  // Ask the device what its current settings, counters, and stats are.
+  rpc GetDeviceState         (GetDeviceStateRequest)     returns (GetDeviceStateResponse);
+
+  // — New for v2 / Harogic —
+  // Apply or update Harogic-specific tunables on an open session. No-op
+  // (OK with empty effective) if the device is not a Harogic.
+  rpc SetHarogicConfig       (SetHarogicConfigRequest)   returns (SetHarogicConfigResponse);
+
+  // List currently open sessions across all devices on this server.
+  rpc ListSessions           (ListSessionsRequest)       returns (ListSessionsResponse);
+}
+
+// ─────────── IQStream (unchanged from v1, wire-compatible) ───────────
+service IQStream {
+  // Start getting raw IQ samples from the device, one chunk at a time,
+  // as a long-running stream that keeps sending until the client stops.
+  rpc Subscribe (SubscribeRequest) returns (stream IQChunk);
+}
+
+// ─────────── SpectrumStream (new) ───────────
+service SpectrumStream {
+  // Real-time spectrum: one FFT frame per message.
+  rpc SubscribeRTSpectrum (SubscribeRTSpectrumRequest) returns (stream SpectrumFrame);
+
+  // Waterfall / spectrogram: stacked FFT frames per message ("tile").
+  // Reserved here for follow-up implementation.
+  rpc SubscribeWaterfall  (SubscribeWaterfallRequest)  returns (stream WaterfallTile);
+
+  // Frequency-hopping sweep trace. One complete sweep per message —
+  // or, when the sweep exceeds SDR_INGEST_HAROGIC_MAX_SWEEP_BINS, split
+  // into multiple consecutive messages sharing the same `sequence`.
+  rpc SubscribeSweep      (SubscribeSweepRequest)      returns (stream SweepTrace);
+}
+
+// ─────────── Enums ───────────
+
+enum DeviceKind {
+  DEVICE_KIND_UNSPECIFIED = 0;
+  DEVICE_KIND_RTLSDR      = 1;
+  DEVICE_KIND_HACKRF      = 2;   // reserved
+  DEVICE_KIND_HAROGIC     = 3;
+}
+
+enum SampleFormat {
+  SAMPLE_FORMAT_UNSPECIFIED = 0;
+  SAMPLE_FORMAT_INT8_IQ     = 1;
+  SAMPLE_FORMAT_INT16_IQ    = 2;
+  SAMPLE_FORMAT_FLOAT32_IQ  = 3;
+}
+
+enum GainMode {
+  GAIN_MODE_UNSPECIFIED = 0;
+  GAIN_MODE_MANUAL      = 1;
+  GAIN_MODE_AGC         = 2;
+}
+
+enum CaptureMode {
+  CAPTURE_MODE_UNSPECIFIED   = 0;
+  CAPTURE_MODE_NONE          = 1;   // device open, no stream active
+  CAPTURE_MODE_IQS           = 2;
+  CAPTURE_MODE_RTA_SPECTRUM  = 3;
+  CAPTURE_MODE_RTA_WATERFALL = 4;
+  CAPTURE_MODE_SWP_SWEEP     = 5;
+  CAPTURE_MODE_DET           = 6;   // reserved (power envelope)
+}
+
+enum HarogicRBWMode {
+  HAROGIC_RBW_UNSPECIFIED         = 0;
+  HAROGIC_RBW_MANUAL              = 1;
+  HAROGIC_RBW_AUTO                = 2;
+  HAROGIC_RBW_ONE_THOUSANDTH_SPAN = 3;
+  HAROGIC_RBW_ONE_PERCENT_SPAN    = 4;
+}
+
+enum HarogicVBWMode {
+  HAROGIC_VBW_UNSPECIFIED     = 0;
+  HAROGIC_VBW_MANUAL          = 1;
+  HAROGIC_VBW_EQUAL_TO_RBW    = 2;
+  HAROGIC_VBW_TEN_PERCENT_RBW = 3;
+  HAROGIC_VBW_ONE_PERCENT_RBW = 4;
+  HAROGIC_VBW_TEN_TIMES_RBW   = 5;
+}
+
+enum HarogicSweepTimeMode {
+  HAROGIC_SWT_UNSPECIFIED = 0;
+  HAROGIC_SWT_MIN         = 1;
+  HAROGIC_SWT_MIN_X2      = 2;
+  HAROGIC_SWT_MIN_X4      = 3;
+  HAROGIC_SWT_MIN_X10     = 4;
+  HAROGIC_SWT_MIN_X20     = 5;
+  HAROGIC_SWT_MIN_X50     = 6;
+  HAROGIC_SWT_MANUAL      = 7;
+}
+
+enum HarogicLOOpt {
+  HAROGIC_LO_UNSPECIFIED = 0;
+  HAROGIC_LO_AUTO        = 1;
+  HAROGIC_LO_SPEED       = 2;
+  HAROGIC_LO_SPUR        = 3;
+  HAROGIC_LO_PHASE_NOISE = 4;
+}
+
+enum HarogicGainStrategy {
+  HAROGIC_GAIN_STRAT_UNSPECIFIED    = 0;
+  HAROGIC_GAIN_STRAT_LOW_NOISE      = 1;
+  HAROGIC_GAIN_STRAT_HIGH_LINEARITY = 2;
+}
+
+enum HarogicPreamp {
+  HAROGIC_PREAMP_UNSPECIFIED = 0;
+  HAROGIC_PREAMP_AUTO_ON     = 1;
+  HAROGIC_PREAMP_FORCED_OFF  = 2;
+}
+
+enum HarogicWindow {
+  HAROGIC_WIN_UNSPECIFIED      = 0;
+  HAROGIC_WIN_FLAT_TOP         = 1;
+  HAROGIC_WIN_BLACKMAN_NUTTALL = 2;
+  HAROGIC_WIN_BLACKMAN         = 3;
+  HAROGIC_WIN_HAMMING          = 4;
+  HAROGIC_WIN_HANNING          = 5;
+}
+
+enum HarogicDetector {
+  HAROGIC_DET_UNSPECIFIED = 0;
+  HAROGIC_DET_AUTO_SAMPLE = 1;
+  HAROGIC_DET_SAMPLE      = 2;
+  HAROGIC_DET_POS_PEAK    = 3;
+  HAROGIC_DET_NEG_PEAK    = 4;
+  HAROGIC_DET_RMS         = 5;
+  HAROGIC_DET_AVERAGE     = 6;
+  HAROGIC_DET_MAX_POWER   = 7;
+  HAROGIC_DET_BYPASS      = 8;
+}
+
+enum HarogicFFTExec {
+  HAROGIC_FFT_EXEC_UNSPECIFIED = 0;
+  HAROGIC_FFT_EXEC_AUTO        = 1;
+  HAROGIC_FFT_EXEC_CPU_PREF    = 2;
+  HAROGIC_FFT_EXEC_FPGA_PREF   = 3;
+  HAROGIC_FFT_EXEC_CPU_ONLY    = 4;
+  HAROGIC_FFT_EXEC_FPGA_ONLY   = 5;
+}
+
+// ─────────── HarogicConfig ───────────
+//
+// Every field is optional. *_set companions distinguish "leave unchanged"
+// from "set to zero/default" for primitive types that lack the
+// proto3 message-presence semantics. Enums use UNSPECIFIED = unchanged.
+
+message HarogicConfig {
+  // ── Amplitude (all modes) ─────────────────────────────────────
+  bool   ref_level_dbm_set = 1;
+  int32  ref_level_dbm     = 2;   // typical range: −80 … +20
+
+  bool   if_gain_grade_set = 3;
+  uint32 if_gain_grade     = 4;   // [0..7] or 255 (auto)
+
+  bool   atten_db_set = 5;
+  int32  atten_db     = 6;        // [0..30] or -128 (auto)
+
+  HarogicPreamp        preamplifier    = 7;
+  HarogicGainStrategy  gain_strategy   = 8;
+  HarogicLOOpt         lo_optimization = 9;
+
+  // ── Bandwidth (SWP, RTA) ──────────────────────────────────────
+  HarogicRBWMode rbw_mode  = 10;
+  bool   rbw_hz_set        = 11;
+  uint32 rbw_hz            = 12;
+
+  HarogicVBWMode vbw_mode  = 13;
+  bool   vbw_hz_set        = 14;
+  uint32 vbw_hz            = 15;
+
+  // ── Sweep timing (SWP) ────────────────────────────────────────
+  HarogicSweepTimeMode swt_mode = 16;
+  bool   swt_value_ms_set       = 17;
+  uint32 swt_value_ms           = 18;
+
+  // ── FFT / trace (SWP, RTA) ────────────────────────────────────
+  uint32           trace_points   = 19;  // 0 = auto
+  HarogicDetector  trace_detector = 20;
+  HarogicWindow    window         = 21;
+  HarogicFFTExec   fft_execution  = 22;
+
+  // ── IQS-specific ──────────────────────────────────────────────
+  uint32 iqs_decimate_factor = 30;
+  uint32 iqs_trigger_length  = 31;
+
+  // ── RTA / waterfall-specific ──────────────────────────────────
+  uint32 rta_frames_per_tile = 40;
+}
+
+// ─────────── DeviceDescriptor / capabilities ───────────
+
+message DeviceDescriptor {
+  string     device_id   = 1;
+  DeviceKind kind        = 2;
+  string     serial      = 3;
+  string     name        = 4;
+  uint32     index       = 5;
+  repeated uint32 supported_sample_rates_hz = 6;
+  uint64     min_freq_hz = 7;
+  uint64     max_freq_hz = 8;
+  repeated int32 supported_gains_tenth_db = 9;
+
+  // — New for v2 — populated iff kind == HAROGIC
+  HarogicCapabilities harogic_caps = 20;
+}
+
+message HarogicCapabilities {
+  uint64 max_iq_bandwidth_hz               = 1;
+  repeated uint32 supported_decimate_factors  = 2;
+  repeated uint32 supported_rbw_hz_manual     = 3;
+  uint32 min_swt_ms                        = 4;
+  uint32 max_trace_points                  = 5;
+  uint32 if_gain_grade_max                 = 6;
+  uint32 atten_db_max                      = 7;
+  repeated CaptureMode supported_capture_modes = 8;
+}
+
+// ─────────── Control-plane messages ───────────
+
+message ListDevicesRequest  {}
+message ListDevicesResponse { repeated DeviceDescriptor devices = 1; }
+
+message OpenDeviceRequest {
+  string   device_id            = 1;
+  uint64   center_freq_hz       = 2;
+  uint32   sample_rate_hz       = 3;   // hint for Harogic; required for RTL-SDR
+  GainMode gain_mode            = 4;
+  int32    gain_tenth_db        = 5;
+  int32    freq_correction_ppm  = 6;
+
+  // Vendor-specific configuration. Only honored when device_id is a Harogic;
+  // INVALID_ARGUMENT if set on a non-Harogic device.
+  optional HarogicConfig harogic = 10;
+}
+
+message OpenDeviceResponse {
+  string           session_id           = 1;
+  DeviceDescriptor device                = 2;
+  SampleFormat     sample_format         = 3;
+  // For Harogic: IQ sample rate actually chosen given decimate factor.
+  // For RTL-SDR: equals the requested sample_rate_hz.
+  uint32           actual_sample_rate_hz = 4;
+}
+
+message CloseDeviceRequest  { string session_id = 1; }
+message CloseDeviceResponse {}
+
+message SetFrequencyRequest  { string session_id = 1; uint64 center_freq_hz = 2; }
+message SetFrequencyResponse { uint64 actual_freq_hz = 1; }
+
+message SetSampleRateRequest  { string session_id = 1; uint32 sample_rate_hz = 2; }
+message SetSampleRateResponse { uint32 actual_sample_rate_hz = 1; }
+
+message SetGainRequest  {
+  string   session_id    = 1;
+  GainMode gain_mode     = 2;
+  int32    gain_tenth_db = 3;
+}
+message SetGainResponse { int32 actual_gain_tenth_db = 1; }
+
+message SetFreqCorrRequest  { string session_id = 1; int32 ppm = 2; }
+message SetFreqCorrResponse { int32 actual_ppm = 1; }
+
+message SetHarogicConfigRequest {
+  string         session_id = 1;
+  HarogicConfig  config     = 2;
+}
+message SetHarogicConfigResponse {
+  // Echo of the resolved values after the device applied them. For fields
+  // the device coerced (e.g., RBW snapped to the supported table), this is
+  // the value actually in effect.
+  HarogicConfig effective = 1;
+}
+
+message ListSessionsRequest {}
+
+message SessionInfo {
+  string      session_id          = 1;
+  string      device_id           = 2;
+  DeviceKind  device_kind         = 3;
+  CaptureMode capture_mode        = 4;
+  // Wall-clock time the session was opened, in Unix nanoseconds.
+  int64       started_at_unix_ns  = 5;
+}
+
+message ListSessionsResponse {
+  repeated SessionInfo sessions = 1;
+}
+
+message GetDeviceStateRequest  { string session_id = 1; }
+message GetDeviceStateResponse {
+  uint64 center_freq_hz      = 1;
+  uint32 sample_rate_hz      = 2;
+  GainMode gain_mode         = 8;
+  int32  gain_tenth_db       = 3;
+  int32  freq_correction_ppm = 4;
+  uint32 subscribers         = 5;
+  uint64 samples_streamed    = 6;
+  uint64 buffer_overruns     = 7;
+  repeated int32 supported_gains_tenth_db = 9;
+  uint64 min_freq_hz         = 10;
+  uint64 max_freq_hz         = 11;
+  repeated PerSubscriberStats subscriber_stats = 12;
+
+  // — New for v2 —
+  CaptureMode    current_capture_mode    = 20;
+  HarogicConfig  current_harogic_config  = 21;
+  uint64         harogic_reconfig_count_total = 22;
+  uint64         harogic_api_errors_total     = 23;
+}
+
+message PerSubscriberStats {
+  uint64 chunks_delivered    = 1;
+  uint64 chunks_dropped      = 2;
+  uint64 dsp_us_avg          = 3;
+  bool   dc_removal_enabled  = 4;
+  bool   iq_balance_enabled  = 5;
+  SampleFormat output_format = 6;
+}
+
+// ─────────── IQStream messages ───────────
+
+message SubscribeRequest {
+  string session_id          = 1;
+  uint32 chunk_size_samples  = 2;
+  bool   dc_removal_enabled  = 3;
+  bool   iq_balance_enabled  = 4;
+  SampleFormat output_format = 5;
+}
+
+message IQChunk {
+  uint64 sequence                = 1;
+  int64  timestamp_ns            = 2;
+  uint64 center_freq_hz          = 3;
+  uint32 sample_rate_hz          = 4;
+  SampleFormat format            = 5;
+  bytes  samples                 = 6;
+  bool   gap_before              = 7;
+  uint32 dropped_chunks_before   = 8;
+  uint64 dropped_samples_before  = 9;
+}
+
+// ─────────── SpectrumStream messages ───────────
+
+message SubscribeRTSpectrumRequest {
+  string session_id = 1;
+  // Subscribers to the same kind on the same session must pass an identical
+  // config or omit it; mismatching configs are rejected with FAILED_PRECONDITION.
+  optional HarogicConfig harogic = 2;
+}
+
+message SubscribeWaterfallRequest {
+  string session_id = 1;
+  optional HarogicConfig harogic = 2;
+}
+
+message SubscribeSweepRequest {
+  string session_id   = 1;
+  uint64 start_freq_hz = 2;
+  uint64 stop_freq_hz  = 3;
+  optional HarogicConfig harogic = 4;
+}
+
+message SpectrumFrame {
+  uint64 sequence       = 1;
+  int64  timestamp_ns   = 2;
+  uint64 center_freq_hz = 3;
+  uint32 sample_rate_hz = 4;
+  uint64 start_freq_hz  = 5;
+  uint64 bin_step_hz    = 6;
+  uint32 bin_count      = 7;
+  // Power values in dBm, little-endian IEEE-754 float32. Length =
+  // bin_count * 4 bytes.
+  bytes  powers_dbm     = 8;
+  bool   gap_before     = 9;
+  uint32 dropped_frames_before = 10;
+}
+
+message WaterfallTile {
+  uint64 sequence       = 1;
+  int64  timestamp_ns   = 2;
+  uint64 center_freq_hz = 3;
+  uint64 start_freq_hz  = 4;
+  uint64 bin_step_hz    = 5;
+  uint32 bin_count      = 6;
+  uint32 frame_count    = 7;
+  // Row-major: frame 0, frame 1, …, frame N−1. Each frame is
+  // bin_count * 4 bytes (float32 dBm, little-endian).
+  bytes  powers_dbm     = 8;
+  // Per-frame timestamps in ns, little-endian int64. Length = frame_count * 8.
+  bytes  per_frame_timestamps_ns = 9;
+  bool   gap_before     = 10;
+  uint32 dropped_tiles_before = 11;
+}
+
+message SweepTrace {
+  uint64 sequence       = 1;
+  int64  timestamp_ns   = 2;
+  int64  sweep_end_ns   = 3;
+  uint64 start_freq_hz  = 4;
+  uint64 stop_freq_hz   = 5;
+  uint64 bin_step_hz    = 6;
+  uint32 bin_count      = 7;
+  // Power values packed as uint8, one byte per bin. Each byte is
+  //   byte = min(255, max(0, int(abs(dBm))))
+  // i.e. the absolute value of dBm clipped into 0..255. A typical
+  // SAN-400 floor of −110 dBm encodes as 110; −20 dBm encodes as 20.
+  // Anything stronger than 0 dBm or weaker than −255 dBm saturates.
+  // Length = bin_count bytes.
+  //
+  // The encoding inverts intuition: SMALLER byte = STRONGER signal.
+  // Consumers doing max-hold decimation across bins take the MINIMUM
+  // byte, not the maximum.
+  //
+  // To recover dBm on the client:
+  //   packed = np.frombuffer(powers_dbm, dtype=np.uint8)
+  //   powers_dbm_float = -packed.astype(np.float32)
+  //
+  // The frequency axis is NOT carried on the wire. Reconstruct it from
+  // start_freq_hz + i * bin_step_hz for i in [0, bin_count).
+  //
+  // RTA's SpectrumFrame.powers_dbm stays float32; this uint8 packing is
+  // SweepTrace-only because wide sweeps (1–40 GHz @ 100 kHz RBW ≈ 390k
+  // bins) would otherwise blow past the gRPC max_message_length.
+  bytes  powers_dbm     = 8;
+  bool   gap_before     = 9;
+  uint32 dropped_sweeps_before = 10;
+}
