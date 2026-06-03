@@ -59,6 +59,20 @@
       "requestEvent": "grpc:invoke:TETRAClassifier.ClassifyFrequency",
       "responseEvent": "TETRAClassifier.ClassifyFrequency",
       "responseStream": false
+    },
+    {
+      "serviceName": "SignalRecorder",
+      "methodName": "StartRecording",
+      "requestEvent": "grpc:invoke:SignalRecorder.StartRecording",
+      "responseEvent": "SignalRecorder.StartRecording",
+      "responseStream": false
+    },
+    {
+      "serviceName": "SignalRecorder",
+      "methodName": "WatchRecording",
+      "requestEvent": "grpc:invoke:SignalRecorder.WatchRecording",
+      "responseEvent": "SignalRecorder.WatchRecording",
+      "responseStream": false
     }
   ]
 }
@@ -104,9 +118,11 @@
 14. الباك يستدعي `DMRClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `DMRClassifier.ClassifyFrequency`.
 15. عندما يريد الفرونت التحقق هل تردد معين يحمل TETRA أم لا، يرسل `grpc:invoke:TETRAClassifier.ClassifyFrequency`.
 16. الباك يستدعي `TETRAClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `TETRAClassifier.ClassifyFrequency`.
-17. الباك يطلب الستريم الموافق من gRPC.
-18. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
-19. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum`.
+17. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording`.
+18. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording`.
+19. الباك يطلب الستريم الموافق من gRPC.
+20. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
+21. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `SignalRecorder.WatchRecording`.
 
 ## 2.2) أقل سيناريو مطلوب ليبدأ النظام بالعمل
 
@@ -190,6 +206,22 @@ Backend   -> grpc:result -> Frontend
 Backend   -> TETRAClassifier.ClassifyFrequency -> Frontend
 ```
 
+### بدء ومتابعة تسجيل إشارة
+
+```text
+Frontend  -> grpc:invoke:SignalRecorder.StartRecording -> Backend
+Backend   -> SignalRecorder.StartRecording (gRPC) -> gRPC server
+gRPC      -> StartRecordingResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> SignalRecorder.StartRecording -> Frontend
+
+Frontend  -> grpc:invoke:SignalRecorder.WatchRecording -> Backend
+Backend   -> SignalRecorder.WatchRecording (gRPC stream) -> gRPC server
+Backend   -> grpc:result { mode: server-stream } -> Frontend
+gRPC      -> RecordingEvent #1..n -> Backend
+Backend   -> SignalRecorder.WatchRecording #1..n -> Frontend
+```
+
 ## 2.4) ما الذي يجب أن يشترك عليه الفرونت فعليًا
 
 الفرونت يجب أن يراقب على الأقل هذه الأحداث:
@@ -202,6 +234,12 @@ Backend   -> TETRAClassifier.ClassifyFrequency -> Frontend
 - `DeviceControl.GetDeviceState`
 - `DMRClassifier.ClassifyFrequency`
 - `TETRAClassifier.ClassifyFrequency`
+- `SignalRecorder.StartRecording`
+- `SignalRecorder.StopRecording`
+- `SignalRecorder.GetRecording`
+- `SignalRecorder.ListRecordings`
+- `SignalRecorder.DeleteRecording`
+- `SignalRecorder.WatchRecording`
 - `IQStream.Subscribe`
 - `SpectrumStream.SubscribeRTSpectrum`
 - `SpectrumStream.SubscribeWaterfall`
@@ -242,6 +280,7 @@ Payload:
 - مثال صحيح: `deviceId`, `centerFreqHz`, `sampleRateHz`
 - مثال صحيح في خدمة DMR: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`
 - مثال صحيح في خدمة TETRA: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`, `earlyExitOnFirstFrame`, `maxFrames`
+- مثال صحيح في خدمة SignalRecorder: `targetFreqHz`, `output`, `demod`, `durationMs`, `bandwidthHz`, `deviceId`, `sampleRateHz`, `label`, `gainTenthDb`, `gainManual`
 - مثال خاطئ: `device_id`, `center_freq_hz`, `sample_rate_hz`
 
 ### `grpc:invoke:Service.Method`
@@ -502,6 +541,251 @@ Response payload:
 ```
 
 قد يتأخر هذا الاستدعاء عدة ثوانٍ لأن الخدمة تنتظر التقاط وتحليل الإطارات قبل الرد، لذلك تم رفع المهلة الخاصة به في الباك.
+
+### SignalRecorder Events
+
+#### `SignalRecorder.StartRecording`
+
+هذا الاستدعاء `unary`.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.StartRecording
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.StartRecording
+```
+
+Request payload:
+
+```json
+{
+  "targetFreqHz": "101700000",
+  "output": "OUTPUT_FORMAT_WAV",
+  "demod": "DEMOD_MODE_WBFM",
+  "durationMs": 10000,
+  "bandwidthHz": 180000,
+  "deviceId": "rtlsdr:2",
+  "sampleRateHz": 2048000,
+  "label": "fm-sample",
+  "gainTenthDb": 287,
+  "gainManual": false
+}
+```
+
+Response payload:
+
+```json
+{
+  "recordingId": "rec-001",
+  "state": "RECORDING_STATE_STARTING",
+  "estimatedSizeBytes": "5242880",
+  "artifactPath": "/recordings/rec-001.wav"
+}
+```
+
+#### `SignalRecorder.StopRecording`
+
+هذا الاستدعاء `unary`.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.StopRecording
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.StopRecording
+```
+
+Request payload:
+
+```json
+{
+  "recordingId": "rec-001"
+}
+```
+
+Response payload:
+
+```json
+{
+  "state": "RECORDING_STATE_STOPPED"
+}
+```
+
+#### `SignalRecorder.GetRecording`
+
+هذا الاستدعاء `unary`.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.GetRecording
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.GetRecording
+```
+
+Request payload:
+
+```json
+{
+  "recordingId": "rec-001"
+}
+```
+
+Response payload:
+
+```json
+{
+  "info": {
+    "recordingId": "rec-001",
+    "state": "RECORDING_STATE_COMPLETED",
+    "artifactPath": "/recordings/rec-001.wav",
+    "fileSizeBytes": "5239901",
+    "sha256Hex": "abcdef123456",
+    "targetFreqHz": "101700000",
+    "sampleRateHz": 2048000,
+    "output": "OUTPUT_FORMAT_WAV",
+    "demod": "DEMOD_MODE_WBFM",
+    "bandwidthHz": 180000,
+    "durationRequestedMs": 10000,
+    "durationActualMs": 9984,
+    "startedAtNs": "1717240000000000000",
+    "endedAtNs": "1717240010000000000",
+    "deviceIdUsed": "rtlsdr:2",
+    "label": "fm-sample",
+    "gapObserved": false,
+    "audioSampleRateHz": 48000
+  }
+}
+```
+
+#### `SignalRecorder.ListRecordings`
+
+هذا الاستدعاء `unary`.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.ListRecordings
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.ListRecordings
+```
+
+Request payload:
+
+```json
+{
+  "stateFilter": "RECORDING_STATE_COMPLETED",
+  "pageSize": 20,
+  "pageCursor": ""
+}
+```
+
+يمكن أيضاً إرسال `{}` للحصول على القائمة الافتراضية.
+
+Response payload:
+
+```json
+{
+  "recordings": [],
+  "nextPageCursor": ""
+}
+```
+
+#### `SignalRecorder.DeleteRecording`
+
+هذا الاستدعاء `unary`.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.DeleteRecording
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.DeleteRecording
+```
+
+Request payload:
+
+```json
+{
+  "recordingId": "rec-001",
+  "stopIfRunning": true
+}
+```
+
+Response payload:
+
+```json
+{
+  "deleted": true
+}
+```
+
+#### `SignalRecorder.WatchRecording`
+
+هذا الاستدعاء `stream` طويل الأمد.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.WatchRecording
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.WatchRecording
+```
+
+Request payload:
+
+```json
+{
+  "recordingId": "rec-001"
+}
+```
+
+أول رد يصل على `grpc:result` كـ acknowledgment بأن stream بدأ أو أنه موجود مسبقاً.
+
+Stream message payload:
+
+```json
+{
+  "sequence": "1",
+  "timestampNs": "1717240000000000000",
+  "state": "RECORDING_STATE_RECORDING",
+  "samplesWritten": "4096",
+  "bytesWritten": "8192",
+  "elapsedMs": 250,
+  "gapObserved": false,
+  "failureReason": ""
+}
+```
+
+ملاحظات مهمة:
+
+- الحقول `uint64` و `int64` مثل `sequence` و `timestampNs` و `samplesWritten` و `bytesWritten` ستظهر كسلاسل نصية `string`.
+- أوامر `StartRecording` و`StopRecording` و`GetRecording` و`ListRecordings` و`DeleteRecording` هي unary، أما `WatchRecording` فهو server-stream.
 
 ### DeviceControl Events
 
@@ -1060,6 +1344,12 @@ Stream message payload:
 - `grpc:invoke`
 - `grpc:invoke:DMRClassifier.ClassifyFrequency`
 - `grpc:invoke:TETRAClassifier.ClassifyFrequency`
+- `grpc:invoke:SignalRecorder.StartRecording`
+- `grpc:invoke:SignalRecorder.StopRecording`
+- `grpc:invoke:SignalRecorder.GetRecording`
+- `grpc:invoke:SignalRecorder.ListRecordings`
+- `grpc:invoke:SignalRecorder.DeleteRecording`
+- `grpc:invoke:SignalRecorder.WatchRecording`
 - `grpc:invoke:DeviceControl.ListDevices`
 - `grpc:invoke:DeviceControl.OpenDevice`
 - `grpc:invoke:DeviceControl.CloseDevice`
@@ -1082,6 +1372,12 @@ Stream message payload:
 - `grpc:error`
 - `DMRClassifier.ClassifyFrequency`
 - `TETRAClassifier.ClassifyFrequency`
+- `SignalRecorder.StartRecording`
+- `SignalRecorder.StopRecording`
+- `SignalRecorder.GetRecording`
+- `SignalRecorder.ListRecordings`
+- `SignalRecorder.DeleteRecording`
+- `SignalRecorder.WatchRecording`
 - `DeviceControl.ListDevices`
 - `DeviceControl.OpenDevice`
 - `DeviceControl.CloseDevice`

@@ -30,6 +30,12 @@ export type SdrIngestionV2HarogicWindow = 'HAROGIC_WIN_UNSPECIFIED' | 'HAROGIC_W
 
 export type SdrIngestionV2SampleFormat = 'SAMPLE_FORMAT_UNSPECIFIED' | 'SAMPLE_FORMAT_INT8_IQ' | 'SAMPLE_FORMAT_INT16_IQ' | 'SAMPLE_FORMAT_FLOAT32_IQ';
 
+export type SignalRecorderV1DemodMode = 'DEMOD_MODE_UNSPECIFIED' | 'DEMOD_MODE_NONE' | 'DEMOD_MODE_WBFM' | 'DEMOD_MODE_NBFM' | 'DEMOD_MODE_AM' | 'DEMOD_MODE_USB' | 'DEMOD_MODE_LSB';
+
+export type SignalRecorderV1OutputFormat = 'OUTPUT_FORMAT_UNSPECIFIED' | 'OUTPUT_FORMAT_IQ_INT8' | 'OUTPUT_FORMAT_IQ_FLOAT32' | 'OUTPUT_FORMAT_WAV';
+
+export type SignalRecorderV1RecordingState = 'RECORDING_STATE_UNSPECIFIED' | 'RECORDING_STATE_STARTING' | 'RECORDING_STATE_RECORDING' | 'RECORDING_STATE_FINALIZING' | 'RECORDING_STATE_COMPLETED' | 'RECORDING_STATE_STOPPED' | 'RECORDING_STATE_FAILED' | 'RECORDING_STATE_INTERRUPTED';
+
 export type TetraClassifierV1GainMode = 'GAIN_MODE_UNSPECIFIED' | 'GAIN_MODE_AUTO' | 'GAIN_MODE_MANUAL';
 
 export type TetraClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_TETRA' | 'VERDICT_NOT_TETRA' | 'VERDICT_INCONCLUSIVE';
@@ -320,6 +326,99 @@ export interface SdrIngestionV2WaterfallTile {
   perFrameTimestampsNs?: string;
   gapBefore?: boolean;
   droppedTilesBefore?: number;
+}
+
+export interface SignalRecorderV1DeleteRecordingRequest {
+  recordingId?: string;
+  stopIfRunning?: boolean;
+}
+
+export interface SignalRecorderV1DeleteRecordingResponse {
+  deleted?: boolean;
+}
+
+export interface SignalRecorderV1GetRecordingRequest {
+  recordingId?: string;
+}
+
+export interface SignalRecorderV1GetRecordingResponse {
+  info?: SignalRecorderV1RecordingInfo;
+}
+
+export interface SignalRecorderV1ListRecordingsRequest {
+  stateFilter?: SignalRecorderV1RecordingState;
+  pageSize?: number;
+  pageCursor?: string;
+}
+
+export interface SignalRecorderV1ListRecordingsResponse {
+  recordings: SignalRecorderV1RecordingInfo[];
+  nextPageCursor?: string;
+}
+
+export interface SignalRecorderV1RecordingEvent {
+  sequence?: string;
+  timestampNs?: string;
+  state?: SignalRecorderV1RecordingState;
+  samplesWritten?: string;
+  bytesWritten?: string;
+  elapsedMs?: number;
+  gapObserved?: boolean;
+  failureReason?: string;
+}
+
+export interface SignalRecorderV1RecordingInfo {
+  recordingId?: string;
+  state?: SignalRecorderV1RecordingState;
+  artifactPath?: string;
+  fileSizeBytes?: string;
+  sha256Hex?: string;
+  targetFreqHz?: string;
+  sampleRateHz?: number;
+  output?: SignalRecorderV1OutputFormat;
+  demod?: SignalRecorderV1DemodMode;
+  bandwidthHz?: number;
+  durationRequestedMs?: number;
+  durationActualMs?: number;
+  startedAtNs?: string;
+  endedAtNs?: string;
+  deviceIdUsed?: string;
+  label?: string;
+  failureReason?: string;
+  gapObserved?: boolean;
+  audioSampleRateHz?: number;
+}
+
+export interface SignalRecorderV1StartRecordingRequest {
+  targetFreqHz?: string;
+  output?: SignalRecorderV1OutputFormat;
+  demod?: SignalRecorderV1DemodMode;
+  durationMs?: number;
+  bandwidthHz?: number;
+  deviceId?: string;
+  sampleRateHz?: number;
+  label?: string;
+  gainTenthDb?: number;
+  gainManual?: boolean;
+}
+
+export interface SignalRecorderV1StartRecordingResponse {
+  recordingId?: string;
+  state?: SignalRecorderV1RecordingState;
+  estimatedSizeBytes?: string;
+  artifactPath?: string;
+}
+
+export interface SignalRecorderV1StopRecordingRequest {
+  recordingId?: string;
+}
+
+export interface SignalRecorderV1StopRecordingResponse {
+  state?: SignalRecorderV1RecordingState;
+}
+
+export interface SignalRecorderV1WatchRecordingRequest {
+  recordingId?: string;
 }
 
 export interface TetraClassifierV1ClassifyFrequencyRequest {

@@ -725,7 +725,105 @@ IQStream.Subscribe
 
 ---
 
-## 14) تتبع جميع أوامر الفرونت الموجودة حالياً
+## 14) ماذا يحدث عند `SignalRecorder.StartRecording` و `SignalRecorder.WatchRecording`
+
+هذه الخدمة تضيف مسار تسجيل كامل فوق البوابة الحالية، وفيها 5 أوامر `unary` وأمر `stream` واحد.
+
+### `SignalRecorder.StartRecording`
+
+الحدث من الفرونت:
+
+```text
+grpc:invoke:SignalRecorder.StartRecording
+```
+
+المسار الداخلي:
+
+1. `src/socket/index.ts` يلتقط الحدث.
+2. `handleInvoke()` ينادي:
+
+   ```ts
+   gateway.invoke('SignalRecorder', 'StartRecording', payload, { targetRoom: socket.id })
+   ```
+
+3. `resolveMethod()` يجد service `SignalRecorder`.
+4. هذا service مربوط على target منفصل هو `50065` عبر إعدادات البيئة.
+5. يتم validation للطلب باستخدام schema `signal_recorder.v1.StartRecordingRequest`.
+6. يتم تنفيذ unary gRPC call على `SignalRecorder.StartRecording`.
+7. عند النجاح:
+   - يرسل الباك `SignalRecorder.StartRecording` إلى نفس العميل.
+   - ثم يرسل `grpc:result`.
+
+### `SignalRecorder.WatchRecording`
+
+الحدث من الفرونت:
+
+```text
+grpc:invoke:SignalRecorder.WatchRecording
+```
+
+المسار الداخلي:
+
+1. `src/socket/index.ts` يلتقط الحدث.
+2. `handleInvoke()` ينادي:
+
+   ```ts
+   gateway.invoke('SignalRecorder', 'WatchRecording', payload, { targetRoom: socket.id })
+   ```
+
+3. `invoke()` يكتشف أن `WatchRecording` من نوع `server-stream`.
+4. `startServerStream()` ينشئ stream جديد أو يعيد استخدام stream موجود لنفس `recordingId`.
+5. يعود مباشرة `grpc:result` إلى الفرونت كـ acknowledgment.
+6. بعد ذلك كل `RecordingEvent` قادم من gRPC يتحول إلى event socket اسمه:
+
+   ```text
+   SignalRecorder.WatchRecording
+   ```
+
+### التسلسل العملي المعتاد لهذه الخدمة
+
+1. الفرونت يرسل `SignalRecorder.StartRecording`.
+2. الباك يعيد `recordingId` داخل `SignalRecorder.StartRecording` وداخل `grpc:result`.
+3. الفرونت يبدأ المراقبة عبر `SignalRecorder.WatchRecording`.
+4. تصل updates الحالة على شكل stream.
+5. لاحقاً يمكن للفرونت أن يرسل:
+   - `SignalRecorder.GetRecording`
+   - أو `SignalRecorder.StopRecording`
+   - أو `SignalRecorder.DeleteRecording`
+
+### مخطط تدفق التسجيل
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant Socket as socket/index.ts
+    participant Gateway as grpc/handlers.ts
+    participant Recorder as signal_recorder gRPC
+    participant Emitter as socket/emitter.ts
+
+    FE->>Socket: grpc:invoke:SignalRecorder.StartRecording
+    Socket->>Gateway: invoke(SignalRecorder, StartRecording, payload, room)
+    Gateway->>Recorder: StartRecording(payload)
+    Recorder-->>Gateway: StartRecordingResponse(recordingId)
+    Gateway->>Emitter: emit(SignalRecorder.StartRecording, payload, {room})
+    Emitter-->>FE: SignalRecorder.StartRecording
+    Gateway-->>FE: grpc:result
+
+    FE->>Socket: grpc:invoke:SignalRecorder.WatchRecording
+    Socket->>Gateway: invoke(SignalRecorder, WatchRecording, payload, room)
+    Gateway->>Recorder: WatchRecording(recordingId)
+    Gateway-->>FE: grpc:result { mode: server-stream }
+
+    loop لكل update
+        Recorder-->>Gateway: RecordingEvent
+        Gateway->>Emitter: emit(SignalRecorder.WatchRecording, event, {room})
+        Emitter-->>FE: SignalRecorder.WatchRecording
+    end
+```
+
+---
+
+## 15) تتبع جميع أوامر الفرونت الموجودة حالياً
 
 كل الأحداث التالية القادمة من الفرونت تنتهي داخل `src/socket/index.ts` ثم `handleInvoke()` ثم `gateway.invoke()`:
 
@@ -743,6 +841,11 @@ IQStream.Subscribe
 - `grpc:invoke:DeviceControl.ListSessions`
 - `grpc:invoke:DMRClassifier.ClassifyFrequency`
 - `grpc:invoke:TETRAClassifier.ClassifyFrequency`
+- `grpc:invoke:SignalRecorder.StartRecording`
+- `grpc:invoke:SignalRecorder.StopRecording`
+- `grpc:invoke:SignalRecorder.GetRecording`
+- `grpc:invoke:SignalRecorder.ListRecordings`
+- `grpc:invoke:SignalRecorder.DeleteRecording`
 
 ### أوامر streaming
 
@@ -750,6 +853,7 @@ IQStream.Subscribe
 - `grpc:invoke:SpectrumStream.SubscribeRTSpectrum`
 - `grpc:invoke:SpectrumStream.SubscribeWaterfall`
 - `grpc:invoke:SpectrumStream.SubscribeSweep`
+- `grpc:invoke:SignalRecorder.WatchRecording`
 
 ### القاعدة العامة للرد
 

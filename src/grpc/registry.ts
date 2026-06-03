@@ -20,6 +20,7 @@ export const protoRegistry = {
   protoFiles: [
   "src/proto/dmr_classifier.proto",
   "src/proto/sdr.proto",
+  "src/proto/signal_recorder.proto",
   "src/proto/tetra_classifier.proto"
 ],
   services: [
@@ -187,6 +188,67 @@ export const protoRegistry = {
     ]
   },
   {
+    "packageName": "signal_recorder.v1",
+    "serviceName": "SignalRecorder",
+    "fullServiceName": "signal_recorder.v1.SignalRecorder",
+    "methods": [
+      {
+        "methodName": "StartRecording",
+        "requestType": "signal_recorder.v1.StartRecordingRequest",
+        "responseType": "signal_recorder.v1.StartRecordingResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 10,
+        "eventName": "SignalRecorder.StartRecording"
+      },
+      {
+        "methodName": "StopRecording",
+        "requestType": "signal_recorder.v1.StopRecordingRequest",
+        "responseType": "signal_recorder.v1.StopRecordingResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 1,
+        "eventName": "SignalRecorder.StopRecording"
+      },
+      {
+        "methodName": "GetRecording",
+        "requestType": "signal_recorder.v1.GetRecordingRequest",
+        "responseType": "signal_recorder.v1.GetRecordingResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 1,
+        "eventName": "SignalRecorder.GetRecording"
+      },
+      {
+        "methodName": "ListRecordings",
+        "requestType": "signal_recorder.v1.ListRecordingsRequest",
+        "responseType": "signal_recorder.v1.ListRecordingsResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 3,
+        "eventName": "SignalRecorder.ListRecordings"
+      },
+      {
+        "methodName": "DeleteRecording",
+        "requestType": "signal_recorder.v1.DeleteRecordingRequest",
+        "responseType": "signal_recorder.v1.DeleteRecordingResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 2,
+        "eventName": "SignalRecorder.DeleteRecording"
+      },
+      {
+        "methodName": "WatchRecording",
+        "requestType": "signal_recorder.v1.WatchRecordingRequest",
+        "responseType": "signal_recorder.v1.RecordingEvent",
+        "requestStream": false,
+        "responseStream": true,
+        "requestFieldCount": 1,
+        "eventName": "SignalRecorder.WatchRecording"
+      }
+    ]
+  },
+  {
     "packageName": "tetra_classifier.v1",
     "serviceName": "TETRAClassifier",
     "fullServiceName": "tetra_classifier.v1.TETRAClassifier",
@@ -219,6 +281,12 @@ export const protoRegistry = {
   "SpectrumStream.SubscribeRTSpectrum",
   "SpectrumStream.SubscribeWaterfall",
   "SpectrumStream.SubscribeSweep",
+  "SignalRecorder.StartRecording",
+  "SignalRecorder.StopRecording",
+  "SignalRecorder.GetRecording",
+  "SignalRecorder.ListRecordings",
+  "SignalRecorder.DeleteRecording",
+  "SignalRecorder.WatchRecording",
   "TETRAClassifier.ClassifyFrequency"
 ]
 } as const;

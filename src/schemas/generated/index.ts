@@ -46,6 +46,15 @@ export const SdrIngestionV2HarogicWindowSchema = z.enum(SdrIngestionV2HarogicWin
 export const SdrIngestionV2SampleFormatValues = ['SAMPLE_FORMAT_UNSPECIFIED', 'SAMPLE_FORMAT_INT8_IQ', 'SAMPLE_FORMAT_INT16_IQ', 'SAMPLE_FORMAT_FLOAT32_IQ'] as const;
 export const SdrIngestionV2SampleFormatSchema = z.enum(SdrIngestionV2SampleFormatValues);
 
+export const SignalRecorderV1DemodModeValues = ['DEMOD_MODE_UNSPECIFIED', 'DEMOD_MODE_NONE', 'DEMOD_MODE_WBFM', 'DEMOD_MODE_NBFM', 'DEMOD_MODE_AM', 'DEMOD_MODE_USB', 'DEMOD_MODE_LSB'] as const;
+export const SignalRecorderV1DemodModeSchema = z.enum(SignalRecorderV1DemodModeValues);
+
+export const SignalRecorderV1OutputFormatValues = ['OUTPUT_FORMAT_UNSPECIFIED', 'OUTPUT_FORMAT_IQ_INT8', 'OUTPUT_FORMAT_IQ_FLOAT32', 'OUTPUT_FORMAT_WAV'] as const;
+export const SignalRecorderV1OutputFormatSchema = z.enum(SignalRecorderV1OutputFormatValues);
+
+export const SignalRecorderV1RecordingStateValues = ['RECORDING_STATE_UNSPECIFIED', 'RECORDING_STATE_STARTING', 'RECORDING_STATE_RECORDING', 'RECORDING_STATE_FINALIZING', 'RECORDING_STATE_COMPLETED', 'RECORDING_STATE_STOPPED', 'RECORDING_STATE_FAILED', 'RECORDING_STATE_INTERRUPTED'] as const;
+export const SignalRecorderV1RecordingStateSchema = z.enum(SignalRecorderV1RecordingStateValues);
+
 export const TetraClassifierV1GainModeValues = ['GAIN_MODE_UNSPECIFIED', 'GAIN_MODE_AUTO', 'GAIN_MODE_MANUAL'] as const;
 export const TetraClassifierV1GainModeSchema = z.enum(TetraClassifierV1GainModeValues);
 
@@ -412,6 +421,125 @@ export const SdrIngestionV2WaterfallTileSchema = z.lazy(() =>
   }),
 );
 
+export const SignalRecorderV1DeleteRecordingRequestSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+    stopIfRunning: z.boolean().optional(),
+  }),
+);
+
+export const SignalRecorderV1DeleteRecordingResponseSchema = z.lazy(() =>
+  z.object({
+    deleted: z.boolean().optional(),
+  }),
+);
+
+export const SignalRecorderV1GetRecordingRequestSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1GetRecordingResponseSchema = z.lazy(() =>
+  z.object({
+    info: SignalRecorderV1RecordingInfoSchema.optional(),
+  }),
+);
+
+export const SignalRecorderV1ListRecordingsRequestSchema = z.lazy(() =>
+  z.object({
+    stateFilter: SignalRecorderV1RecordingStateSchema.optional(),
+    pageSize: z.number().int().optional(),
+    pageCursor: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1ListRecordingsResponseSchema = z.lazy(() =>
+  z.object({
+    recordings: z.array(SignalRecorderV1RecordingInfoSchema).default([]),
+    nextPageCursor: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1RecordingEventSchema = z.lazy(() =>
+  z.object({
+    sequence: z.string().optional(),
+    timestampNs: z.string().optional(),
+    state: SignalRecorderV1RecordingStateSchema.optional(),
+    samplesWritten: z.string().optional(),
+    bytesWritten: z.string().optional(),
+    elapsedMs: z.number().int().optional(),
+    gapObserved: z.boolean().optional(),
+    failureReason: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1RecordingInfoSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+    state: SignalRecorderV1RecordingStateSchema.optional(),
+    artifactPath: z.string().optional(),
+    fileSizeBytes: z.string().optional(),
+    sha256Hex: z.string().optional(),
+    targetFreqHz: z.string().optional(),
+    sampleRateHz: z.number().int().optional(),
+    output: SignalRecorderV1OutputFormatSchema.optional(),
+    demod: SignalRecorderV1DemodModeSchema.optional(),
+    bandwidthHz: z.number().int().optional(),
+    durationRequestedMs: z.number().int().optional(),
+    durationActualMs: z.number().int().optional(),
+    startedAtNs: z.string().optional(),
+    endedAtNs: z.string().optional(),
+    deviceIdUsed: z.string().optional(),
+    label: z.string().optional(),
+    failureReason: z.string().optional(),
+    gapObserved: z.boolean().optional(),
+    audioSampleRateHz: z.number().int().optional(),
+  }),
+);
+
+export const SignalRecorderV1StartRecordingRequestSchema = z.lazy(() =>
+  z.object({
+    targetFreqHz: z.string().optional(),
+    output: SignalRecorderV1OutputFormatSchema.optional(),
+    demod: SignalRecorderV1DemodModeSchema.optional(),
+    durationMs: z.number().int().optional(),
+    bandwidthHz: z.number().int().optional(),
+    deviceId: z.string().optional(),
+    sampleRateHz: z.number().int().optional(),
+    label: z.string().optional(),
+    gainTenthDb: z.number().int().optional(),
+    gainManual: z.boolean().optional(),
+  }),
+);
+
+export const SignalRecorderV1StartRecordingResponseSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+    state: SignalRecorderV1RecordingStateSchema.optional(),
+    estimatedSizeBytes: z.string().optional(),
+    artifactPath: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1StopRecordingRequestSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1StopRecordingResponseSchema = z.lazy(() =>
+  z.object({
+    state: SignalRecorderV1RecordingStateSchema.optional(),
+  }),
+);
+
+export const SignalRecorderV1WatchRecordingRequestSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+  }),
+);
+
 export const TetraClassifierV1ClassifyFrequencyRequestSchema = z.lazy(() =>
   z.object({
     targetFreqHz: z.string().optional(),
@@ -497,6 +625,19 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'sdr_ingestion.v2.SubscribeWaterfallRequest': SdrIngestionV2SubscribeWaterfallRequestSchema,
   'sdr_ingestion.v2.SweepTrace': SdrIngestionV2SweepTraceSchema,
   'sdr_ingestion.v2.WaterfallTile': SdrIngestionV2WaterfallTileSchema,
+  'signal_recorder.v1.DeleteRecordingRequest': SignalRecorderV1DeleteRecordingRequestSchema,
+  'signal_recorder.v1.DeleteRecordingResponse': SignalRecorderV1DeleteRecordingResponseSchema,
+  'signal_recorder.v1.GetRecordingRequest': SignalRecorderV1GetRecordingRequestSchema,
+  'signal_recorder.v1.GetRecordingResponse': SignalRecorderV1GetRecordingResponseSchema,
+  'signal_recorder.v1.ListRecordingsRequest': SignalRecorderV1ListRecordingsRequestSchema,
+  'signal_recorder.v1.ListRecordingsResponse': SignalRecorderV1ListRecordingsResponseSchema,
+  'signal_recorder.v1.RecordingEvent': SignalRecorderV1RecordingEventSchema,
+  'signal_recorder.v1.RecordingInfo': SignalRecorderV1RecordingInfoSchema,
+  'signal_recorder.v1.StartRecordingRequest': SignalRecorderV1StartRecordingRequestSchema,
+  'signal_recorder.v1.StartRecordingResponse': SignalRecorderV1StartRecordingResponseSchema,
+  'signal_recorder.v1.StopRecordingRequest': SignalRecorderV1StopRecordingRequestSchema,
+  'signal_recorder.v1.StopRecordingResponse': SignalRecorderV1StopRecordingResponseSchema,
+  'signal_recorder.v1.WatchRecordingRequest': SignalRecorderV1WatchRecordingRequestSchema,
   'tetra_classifier.v1.ClassifyFrequencyRequest': TetraClassifierV1ClassifyFrequencyRequestSchema,
   'tetra_classifier.v1.ClassifyFrequencyResponse': TetraClassifierV1ClassifyFrequencyResponseSchema,
   'tetra_classifier.v1.TETRAEvidence': TetraClassifierV1TETRAEvidenceSchema,

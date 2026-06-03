@@ -1,0 +1,126 @@
+syntax = "proto3";
+package signal_recorder.v1;
+
+// Signal Recorder — Spec 005. Record an RF signal at a chosen frequency for a
+// chosen duration; produce either raw IQ (.iq + SigMF) or demodulated audio
+// (.wav). The service is a gRPC client of sdr_ingestion (Spec 001).
+
+service SignalRecorder {
+  rpc StartRecording  (StartRecordingRequest)  returns (StartRecordingResponse);
+  rpc StopRecording   (StopRecordingRequest)   returns (StopRecordingResponse);
+  rpc GetRecording    (GetRecordingRequest)    returns (GetRecordingResponse);
+  rpc ListRecordings  (ListRecordingsRequest)  returns (ListRecordingsResponse);
+  rpc DeleteRecording (DeleteRecordingRequest) returns (DeleteRecordingResponse);
+  rpc WatchRecording  (WatchRecordingRequest)  returns (stream RecordingEvent);
+}
+
+// ─────────── Enums ───────────
+
+enum OutputFormat {
+  OUTPUT_FORMAT_UNSPECIFIED = 0;
+  OUTPUT_FORMAT_IQ_INT8     = 1;
+  OUTPUT_FORMAT_IQ_FLOAT32  = 2;
+  OUTPUT_FORMAT_WAV         = 3;
+}
+
+enum DemodMode {
+  DEMOD_MODE_UNSPECIFIED = 0;
+  DEMOD_MODE_NONE        = 1;
+  DEMOD_MODE_WBFM        = 2;
+  DEMOD_MODE_NBFM        = 3;
+  DEMOD_MODE_AM          = 4;
+  DEMOD_MODE_USB         = 5;
+  DEMOD_MODE_LSB         = 6;
+}
+
+enum RecordingState {
+  RECORDING_STATE_UNSPECIFIED = 0;
+  RECORDING_STATE_STARTING    = 1;
+  RECORDING_STATE_RECORDING   = 2;
+  RECORDING_STATE_FINALIZING  = 3;
+  RECORDING_STATE_COMPLETED   = 4;
+  RECORDING_STATE_STOPPED     = 5;
+  RECORDING_STATE_FAILED      = 6;
+  RECORDING_STATE_INTERRUPTED = 7;
+}
+
+// ─────────── Messages ───────────
+
+message StartRecordingRequest {
+  uint64 target_freq_hz   = 1;
+  OutputFormat output     = 2;
+  DemodMode    demod      = 3;
+  uint32 duration_ms      = 4;
+  uint32 bandwidth_hz     = 5;
+  string device_id        = 6;
+  uint32 sample_rate_hz   = 7;
+  string label            = 8;
+  int32  gain_tenth_db    = 9;
+  bool   gain_manual      = 10;
+}
+
+message StartRecordingResponse {
+  string         recording_id        = 1;
+  RecordingState state               = 2;
+  uint64         estimated_size_bytes = 3;
+  string         artifact_path       = 4;
+}
+
+message StopRecordingRequest  { string recording_id = 1; }
+message StopRecordingResponse { RecordingState state = 1; }
+
+message GetRecordingRequest   { string recording_id = 1; }
+message GetRecordingResponse  { RecordingInfo info  = 1; }
+
+message ListRecordingsRequest {
+  RecordingState state_filter = 1;
+  uint32 page_size            = 2;
+  string page_cursor          = 3;
+}
+message ListRecordingsResponse {
+  repeated RecordingInfo recordings = 1;
+  string next_page_cursor           = 2;
+}
+
+message DeleteRecordingRequest  {
+  string recording_id    = 1;
+  bool   stop_if_running = 2;
+}
+message DeleteRecordingResponse {
+  bool deleted = 1;
+}
+
+message WatchRecordingRequest  { string recording_id = 1; }
+
+message RecordingEvent {
+  uint64 sequence        = 1;
+  int64  timestamp_ns    = 2;
+  RecordingState state   = 3;
+  uint64 samples_written = 4;
+  uint64 bytes_written   = 5;
+  uint32 elapsed_ms      = 6;
+  bool   gap_observed    = 7;
+  string failure_reason  = 8;
+}
+
+message RecordingInfo {
+  string         recording_id          = 1;
+  RecordingState state                 = 2;
+  string         artifact_path         = 3;
+  uint64         file_size_bytes       = 4;
+  string         sha256_hex            = 5;
+  uint64         target_freq_hz        = 6;
+  uint32         sample_rate_hz        = 7;
+  OutputFormat   output                = 8;
+  DemodMode      demod                 = 9;
+  uint32         bandwidth_hz          = 10;
+  uint32         duration_requested_ms = 11;
+  uint32         duration_actual_ms    = 12;
+  int64          started_at_ns         = 13;
+  int64          ended_at_ns           = 14;
+  string         device_id_used        = 15;
+  string         label                 = 16;
+  string         failure_reason        = 17;
+  bool           gap_observed          = 18;
+  uint32         audio_sample_rate_hz  = 19;
+}
