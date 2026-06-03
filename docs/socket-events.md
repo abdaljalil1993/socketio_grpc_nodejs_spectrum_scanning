@@ -2,6 +2,10 @@
 
 هذا الملف يشرح عقد الاتصال الخاص بالـ Socket.IO بين الفرونت والباك إند.
 
+لشرح التتبع الداخلي للمشروع خطوة بخطوة، ومسار كل حدث داخل كود الباك، راجع أيضًا الملف:
+
+- `docs/runtime-workflow-deep-ar.md`
+
 ## 1) معلومات الاتصال
 
 - البروتوكول: Socket.IO
@@ -41,6 +45,20 @@
       "requestEvent": "grpc:invoke:SpectrumStream.SubscribeSweep",
       "responseEvent": "SpectrumStream.SubscribeSweep",
       "responseStream": true
+    },
+    {
+      "serviceName": "DMRClassifier",
+      "methodName": "ClassifyFrequency",
+      "requestEvent": "grpc:invoke:DMRClassifier.ClassifyFrequency",
+      "responseEvent": "DMRClassifier.ClassifyFrequency",
+      "responseStream": false
+    },
+    {
+      "serviceName": "TETRAClassifier",
+      "methodName": "ClassifyFrequency",
+      "requestEvent": "grpc:invoke:TETRAClassifier.ClassifyFrequency",
+      "responseEvent": "TETRAClassifier.ClassifyFrequency",
+      "responseStream": false
     }
   ]
 }
@@ -82,9 +100,13 @@
   - `grpc:invoke:SpectrumStream.SubscribeRTSpectrum`
   - `grpc:invoke:SpectrumStream.SubscribeWaterfall`
   - `grpc:invoke:SpectrumStream.SubscribeSweep`
-13. الباك يطلب الستريم الموافق من gRPC.
-14. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
-15. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum`.
+13. عندما يريد الفرونت التحقق هل تردد معين يحمل DMR أم لا، يرسل `grpc:invoke:DMRClassifier.ClassifyFrequency`.
+14. الباك يستدعي `DMRClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `DMRClassifier.ClassifyFrequency`.
+15. عندما يريد الفرونت التحقق هل تردد معين يحمل TETRA أم لا، يرسل `grpc:invoke:TETRAClassifier.ClassifyFrequency`.
+16. الباك يستدعي `TETRAClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `TETRAClassifier.ClassifyFrequency`.
+17. الباك يطلب الستريم الموافق من gRPC.
+18. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
+19. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum`.
 
 ## 2.2) أقل سيناريو مطلوب ليبدأ النظام بالعمل
 
@@ -148,6 +170,26 @@ gRPC      -> SpectrumFrame #1..n -> Backend
 Backend   -> SpectrumStream.SubscribeRTSpectrum #1..n -> Frontend
 ```
 
+### فحص تردد DMR
+
+```text
+Frontend  -> grpc:invoke:DMRClassifier.ClassifyFrequency -> Backend
+Backend   -> DMRClassifier.ClassifyFrequency (gRPC) -> gRPC server
+gRPC      -> ClassifyFrequencyResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> DMRClassifier.ClassifyFrequency -> Frontend
+```
+
+### فحص تردد TETRA
+
+```text
+Frontend  -> grpc:invoke:TETRAClassifier.ClassifyFrequency -> Backend
+Backend   -> TETRAClassifier.ClassifyFrequency (gRPC) -> gRPC server
+gRPC      -> ClassifyFrequencyResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> TETRAClassifier.ClassifyFrequency -> Frontend
+```
+
 ## 2.4) ما الذي يجب أن يشترك عليه الفرونت فعليًا
 
 الفرونت يجب أن يراقب على الأقل هذه الأحداث:
@@ -158,6 +200,8 @@ Backend   -> SpectrumStream.SubscribeRTSpectrum #1..n -> Frontend
 - `DeviceControl.ListDevices`
 - `DeviceControl.OpenDevice`
 - `DeviceControl.GetDeviceState`
+- `DMRClassifier.ClassifyFrequency`
+- `TETRAClassifier.ClassifyFrequency`
 - `IQStream.Subscribe`
 - `SpectrumStream.SubscribeRTSpectrum`
 - `SpectrumStream.SubscribeWaterfall`
@@ -196,6 +240,8 @@ Payload:
 - الباك يستقبل أسماء الحقول بصيغة `camelCase` وليس `snake_case`.
 - أي field من نوع `uint64` أو `int64` في الـ proto يظهر هنا عادة كسلسلة نصية `string` وليس كرقم JavaScript عادي.
 - مثال صحيح: `deviceId`, `centerFreqHz`, `sampleRateHz`
+- مثال صحيح في خدمة DMR: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`
+- مثال صحيح في خدمة TETRA: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`, `earlyExitOnFirstFrame`, `maxFrames`
 - مثال خاطئ: `device_id`, `center_freq_hz`, `sample_rate_hz`
 
 ### `grpc:invoke:Service.Method`
@@ -301,6 +347,161 @@ grpc:invoke:DeviceControl.SetFrequency
 - إذا كان الاستدعاء Unary، فالعميل الطالب يستقبل نتيجته على حدث business نفسه أيضًا.
 - إذا كان الاستدعاء Streaming من نفس العميل، فالعميل الطالب فقط يستقبل بيانات هذا stream.
 - إذا كان هناك stream auto-start من إعدادات السيرفر (`GRPC_STREAM_SUBSCRIPTIONS`) فسيتم بثه لجميع العملاء المتصلين.
+
+### DMRClassifier Events
+
+#### `DMRClassifier.ClassifyFrequency`
+
+هذا الاستدعاء `unary` وليس stream.
+
+Request payload:
+
+```json
+{
+  "targetFreqHz": "438500000",
+  "captureMs": 1200,
+  "deviceId": "rtlsdr:0",
+  "gainMode": "GAIN_MODE_AUTO"
+}
+```
+
+مثال آخر عند استخدام gain يدوي:
+
+```json
+{
+  "targetFreqHz": "438500000",
+  "captureMs": 1500,
+  "deviceId": "rtlsdr:0",
+  "gainMode": "GAIN_MODE_MANUAL",
+  "gainTenthDb": 287
+}
+```
+
+ملاحظات مهمة:
+
+- `targetFreqHz` من نوع `uint64` لذلك يجب إرساله كسلسلة نصية `string`.
+- أسماء الحقول يجب أن تكون `camelCase` كما في المثال، وليس `target_freq_hz` أو `gain_tenth_db`.
+- نتيجة الفحص ستصل على `grpc:result` وعلى event العمل نفسه `DMRClassifier.ClassifyFrequency`.
+
+Response payload:
+
+```json
+{
+  "verdict": "VERDICT_DMR",
+  "isDmr": true,
+  "confidence": 0.94,
+  "evidence": {
+    "syncWordsFound": 3,
+    "bestSyncHammingErrors": 0,
+    "totalSyncHammingErrors": 2,
+    "cfoHzUsed": -41.5,
+    "effectiveFsHz": 48000,
+    "samplesPerSymbol": 10,
+    "matchedSyncTypes": ["BS_VOICE"],
+    "bandwidth_3dbKhz": 11.2,
+    "inChannelPowerDbfs": -24.8,
+    "snrDbEstimate": 18.4
+  },
+  "capturedFreqHz": "438500000",
+  "capturedSampleRateHz": 240000,
+  "capturedMs": 1200,
+  "capturedSamples": "288000",
+  "deviceIdUsed": "rtlsdr:0",
+  "gainModeUsed": "GAIN_MODE_AUTO",
+  "gainTenthDbUsed": 0
+}
+```
+
+### TETRAClassifier Events
+
+#### `TETRAClassifier.ClassifyFrequency`
+
+هذا الاستدعاء `unary` وليس stream.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:TETRAClassifier.ClassifyFrequency
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+TETRAClassifier.ClassifyFrequency
+```
+
+Request payload:
+
+```json
+{
+  "targetFreqHz": "438500000",
+  "captureMs": 1500,
+  "deviceId": "rtlsdr:2",
+  "gainMode": "GAIN_MODE_AUTO",
+  "earlyExitOnFirstFrame": true,
+  "maxFrames": 50
+}
+```
+
+مثال مع gain يدوي:
+
+```json
+{
+  "targetFreqHz": "438500000",
+  "captureMs": 1800,
+  "deviceId": "rtlsdr:2",
+  "gainMode": "GAIN_MODE_MANUAL",
+  "gainTenthDb": 287,
+  "earlyExitOnFirstFrame": false,
+  "maxFrames": 200
+}
+```
+
+ملاحظات مهمة:
+
+- `targetFreqHz` من نوع `uint64` لذلك يجب إرساله كسلسلة نصية `string`.
+- الحد الأدنى العملي لـ `captureMs` هنا هو `800` وفق البروتو.
+- أسماء الحقول يجب أن تكون `camelCase` مثل `earlyExitOnFirstFrame` و `maxFrames` وليس `early_exit_on_first_frame` أو `max_frames`.
+- نتيجة الفحص ستصل على `grpc:result` وعلى event العمل نفسه `TETRAClassifier.ClassifyFrequency`.
+
+Response payload:
+
+```json
+{
+  "verdict": "VERDICT_TETRA",
+  "isTetra": true,
+  "confidence": 0.91,
+  "evidence": {
+    "framesObserved": 14,
+    "bschFrames": 2,
+    "sysinfoFrames": 4,
+    "tchSFrames": 3,
+    "cmceFrames": 1,
+    "distinctCalls": 2,
+    "mcc": 425,
+    "mnc": 1,
+    "locationArea": 77,
+    "colourCode": 12,
+    "advertisedFreqHz": "438500000",
+    "timeToFirstFrameMs": 934,
+    "anyCallUnencrypted": true
+  },
+  "capturedFreqHz": "438500000",
+  "capturedSampleRateHz": 1800000,
+  "capturedMs": 1500,
+  "effectiveCaptureMs": 1200,
+  "deviceIdUsed": "rtlsdr:2",
+  "gainModeUsed": "GAIN_MODE_AUTO",
+  "gainTenthDbUsed": 0,
+  "frames": [
+    "{\"type\":\"BSCH\",\"mcc\":425}",
+    "{\"type\":\"SYSINFO\",\"mnc\":1}"
+  ],
+  "framesTruncated": false
+}
+```
+
+قد يتأخر هذا الاستدعاء عدة ثوانٍ لأن الخدمة تنتظر التقاط وتحليل الإطارات قبل الرد، لذلك تم رفع المهلة الخاصة به في الباك.
 
 ### DeviceControl Events
 
@@ -857,6 +1058,8 @@ Stream message payload:
 ### من الفرونت إلى الباك
 
 - `grpc:invoke`
+- `grpc:invoke:DMRClassifier.ClassifyFrequency`
+- `grpc:invoke:TETRAClassifier.ClassifyFrequency`
 - `grpc:invoke:DeviceControl.ListDevices`
 - `grpc:invoke:DeviceControl.OpenDevice`
 - `grpc:invoke:DeviceControl.CloseDevice`
@@ -877,6 +1080,8 @@ Stream message payload:
 - `grpc:methods`
 - `grpc:result`
 - `grpc:error`
+- `DMRClassifier.ClassifyFrequency`
+- `TETRAClassifier.ClassifyFrequency`
 - `DeviceControl.ListDevices`
 - `DeviceControl.OpenDevice`
 - `DeviceControl.CloseDevice`

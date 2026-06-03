@@ -1,0 +1,64 @@
+syntax = "proto3";
+package tetra_classifier.v1;
+
+// TETRA Classifier — Spec 006. Per-frequency "is this TETRA?" plus a
+// pass-through of all tetra-kit frames observed during the capture.
+
+service TETRAClassifier {
+  rpc ClassifyFrequency (ClassifyFrequencyRequest) returns (ClassifyFrequencyResponse);
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED  = 0;
+  VERDICT_TETRA        = 1;
+  VERDICT_NOT_TETRA    = 2;
+  VERDICT_INCONCLUSIVE = 3;
+}
+
+enum GainMode {
+  GAIN_MODE_UNSPECIFIED = 0;
+  GAIN_MODE_AUTO        = 1;
+  GAIN_MODE_MANUAL      = 2;
+}
+
+message ClassifyFrequencyRequest {
+  uint64 target_freq_hz = 1;
+  uint32 capture_ms = 2;
+  string device_id = 3;
+  GainMode gain_mode = 4;
+  int32 gain_tenth_db = 5;
+  bool early_exit_on_first_frame = 6;
+  uint32 max_frames = 7;
+}
+
+message ClassifyFrequencyResponse {
+  Verdict verdict = 1;
+  bool is_tetra = 2;
+  float confidence = 3;
+  TETRAEvidence evidence = 4;
+  uint64 captured_freq_hz = 5;
+  uint32 captured_sample_rate_hz = 6;
+  uint32 captured_ms = 7;
+  uint32 effective_capture_ms = 8;
+  string device_id_used = 9;
+  GainMode gain_mode_used = 10;
+  int32 gain_tenth_db_used = 11;
+  repeated string frames = 12;
+  bool frames_truncated = 13;
+}
+
+message TETRAEvidence {
+  uint32 frames_observed = 1;
+  uint32 bsch_frames = 2;
+  uint32 sysinfo_frames = 3;
+  uint32 tch_s_frames = 4;
+  uint32 cmce_frames = 5;
+  uint32 distinct_calls = 6;
+  uint32 mcc = 7;
+  uint32 mnc = 8;
+  uint32 location_area = 9;
+  uint32 colour_code = 10;
+  uint64 advertised_freq_hz = 11;
+  uint32 time_to_first_frame_ms = 12;
+  bool any_call_unencrypted = 13;
+}

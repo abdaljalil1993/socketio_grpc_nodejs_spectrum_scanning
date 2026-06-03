@@ -12,7 +12,13 @@ import { logger } from './utils/logger';
 const bootstrap = async (): Promise<void> => {
   const protoFiles = collectProtoFiles(env.GRPC_PROTO_DIR);
   const grpcObject = loadGrpcObject(protoFiles, env.GRPC_PROTO_DIR);
-  const grpcClients = createGrpcClients(grpcObject, env.GRPC_TARGET, env.GRPC_USE_TLS, logger);
+  const grpcClients = createGrpcClients(
+    grpcObject,
+    env.GRPC_TARGET,
+    env.grpcServiceTargets,
+    env.GRPC_USE_TLS,
+    logger,
+  );
   const socketEmitter = createSocketEmitter(logger);
   const gateway = createGrpcGateway({
     clients: grpcClients,
@@ -40,6 +46,7 @@ const bootstrap = async (): Promise<void> => {
         host: env.HOST,
         port: env.PORT,
         grpcTarget: env.GRPC_TARGET,
+        grpcServiceTargets: env.grpcServiceTargets,
         protoFiles,
         readyServices: connectionSummary.readyServices
       },

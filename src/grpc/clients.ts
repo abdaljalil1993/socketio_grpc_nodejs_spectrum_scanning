@@ -12,6 +12,7 @@ export interface GatewayMethodClient {
 
 export interface GatewayServiceClient {
   definition: ProtoServiceRegistry;
+  target: string;
   client: grpc.Client;
   methods: Map<string, GatewayMethodClient>;
 }
@@ -55,6 +56,7 @@ const resolveServiceConstructor = (
 export const createGrpcClients = (
   grpcObject: grpc.GrpcObject,
   target: string,
+  serviceTargets: Record<string, string>,
   useTls: boolean,
   logger: Logger,
 ): GatewayClients => {
@@ -69,9 +71,15 @@ export const createGrpcClients = (
       return [];
     }
 
-    const client = new ServiceClient(target, credentials);
+    const serviceTarget =
+      serviceTargets[serviceDefinition.serviceName] ??
+      serviceTargets[serviceDefinition.fullServiceName] ??
+      target;
+
+    const client = new ServiceClient(serviceTarget, credentials);
     const serviceClient: GatewayServiceClient = {
       definition: serviceDefinition,
+      target: serviceTarget,
       client,
       methods: new Map(
         serviceDefinition.methods.map((method) => [method.methodName.toLowerCase(), {
@@ -109,7 +117,7 @@ export const createGrpcClients = (
                 if (error) {
                   failedServices += 1;
                   scopedLogger.error(
-                    { serviceName: service.definition.fullServiceName, error },
+                    { serviceName: service.definition.fullServiceName, target: service.target, error },
                     'gRPC client failed readiness check',
                   );
                   resolve();
@@ -117,7 +125,7 @@ export const createGrpcClients = (
                 }
 
                 readyServices += 1;
-                scopedLogger.info({ serviceName: service.definition.fullServiceName }, 'gRPC connected');
+                scopedLogger.info({ serviceName: service.definition.fullServiceName, target: service.target }, 'gRPC connected');
                 resolve();
               });
             }),

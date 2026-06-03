@@ -18,9 +18,27 @@ export interface ProtoServiceRegistry {
 
 export const protoRegistry = {
   protoFiles: [
-  "src/proto/sdr.proto"
+  "src/proto/dmr_classifier.proto",
+  "src/proto/sdr.proto",
+  "src/proto/tetra_classifier.proto"
 ],
   services: [
+  {
+    "packageName": "dmr_classifier.v1",
+    "serviceName": "DMRClassifier",
+    "fullServiceName": "dmr_classifier.v1.DMRClassifier",
+    "methods": [
+      {
+        "methodName": "ClassifyFrequency",
+        "requestType": "dmr_classifier.v1.ClassifyFrequencyRequest",
+        "responseType": "dmr_classifier.v1.ClassifyFrequencyResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 5,
+        "eventName": "DMRClassifier.ClassifyFrequency"
+      }
+    ]
+  },
   {
     "packageName": "sdr_ingestion.v2",
     "serviceName": "DeviceControl",
@@ -167,9 +185,26 @@ export const protoRegistry = {
         "eventName": "SpectrumStream.SubscribeSweep"
       }
     ]
+  },
+  {
+    "packageName": "tetra_classifier.v1",
+    "serviceName": "TETRAClassifier",
+    "fullServiceName": "tetra_classifier.v1.TETRAClassifier",
+    "methods": [
+      {
+        "methodName": "ClassifyFrequency",
+        "requestType": "tetra_classifier.v1.ClassifyFrequencyRequest",
+        "responseType": "tetra_classifier.v1.ClassifyFrequencyResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 7,
+        "eventName": "TETRAClassifier.ClassifyFrequency"
+      }
+    ]
   }
 ],
   eventNames: [
+  "DMRClassifier.ClassifyFrequency",
   "DeviceControl.ListDevices",
   "DeviceControl.OpenDevice",
   "DeviceControl.CloseDevice",
@@ -183,6 +218,7 @@ export const protoRegistry = {
   "IQStream.Subscribe",
   "SpectrumStream.SubscribeRTSpectrum",
   "SpectrumStream.SubscribeWaterfall",
-  "SpectrumStream.SubscribeSweep"
+  "SpectrumStream.SubscribeSweep",
+  "TETRAClassifier.ClassifyFrequency"
 ]
 } as const;

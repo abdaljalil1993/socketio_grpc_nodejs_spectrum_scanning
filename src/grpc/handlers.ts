@@ -61,6 +61,13 @@ const isServerStreamMethod = (method: GatewayMethodClient): boolean =>
 const isUnaryMethod = (method: GatewayMethodClient): boolean =>
   !method.definition.responseStream && !method.definition.requestStream;
 
+const resolveRequestTimeoutMs = (serviceName: string, fullServiceName: string, methodName: string): number => {
+  const scopedKey = `${serviceName}.${methodName}`;
+  const fullScopedKey = `${fullServiceName}.${methodName}`;
+
+  return env.grpcMethodTimeouts[scopedKey] ?? env.grpcMethodTimeouts[fullScopedKey] ?? env.GRPC_REQUEST_TIMEOUT_MS;
+};
+
 const getGrpcErrorStatusCode = (error: ServiceError): number => {
   if (error.code === grpcStatus.INVALID_ARGUMENT || error.code === grpcStatus.FAILED_PRECONDITION) {
     return 400;
@@ -346,12 +353,17 @@ export const createGrpcGateway = ({
 
       if (isUnaryMethod(method)) {
         const parsedPayload = validateWithSchema(method.definition.requestType, payload, logger);
+        const timeoutMs = resolveRequestTimeoutMs(
+          service.definition.serviceName,
+          service.definition.fullServiceName,
+          method.definition.methodName,
+        );
 
         logger.info(
           {
             serviceName: service.definition.serviceName,
             methodName: method.definition.methodName,
-            timeoutMs: env.GRPC_REQUEST_TIMEOUT_MS
+            timeoutMs
           },
           'Starting unary gRPC request',
         );
@@ -359,7 +371,7 @@ export const createGrpcGateway = ({
         const response = await new Promise<unknown>((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new GatewayError(`gRPC request timed out for ${service.definition.serviceName}.${method.definition.methodName}`, 504));
-          }, env.GRPC_REQUEST_TIMEOUT_MS);
+          }, timeoutMs);
 
           (service.client as any)[method.clientMethodName](parsedPayload, (error: ServiceError | null, result: unknown) => {
             clearTimeout(timeout);

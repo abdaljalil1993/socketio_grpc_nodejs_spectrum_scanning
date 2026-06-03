@@ -1,0 +1,88 @@
+syntax = "proto3";
+package dmr_classifier.v1;
+
+// DMR Classifier — Spec 002. Per-frequency yes/no "is this DMR?"
+
+service DMRClassifier {
+  // Unary one-shot. Service captures IQ at target_freq_hz for ~capture_ms
+  // milliseconds via sdr_ingestion, runs the DMR sync-word test, returns.
+  rpc ClassifyFrequency (ClassifyFrequencyRequest) returns (ClassifyFrequencyResponse);
+}
+
+// ─────────── Messages ───────────
+
+enum Verdict {
+  VERDICT_UNSPECIFIED  = 0;
+  VERDICT_DMR          = 1;  // is_dmr == true
+  VERDICT_NOT_DMR      = 2;  // is_dmr == false (no sync words, etc.)
+  VERDICT_INCONCLUSIVE = 3;  // capture too weak / too short to slice symbols
+}
+
+// Tuner gain control. Maps onto sdr_ingestion.v1.GainMode.
+enum GainMode {
+  GAIN_MODE_UNSPECIFIED = 0;  // service default (currently AUTO)
+  GAIN_MODE_AUTO        = 1;  // tuner AGC — `gain_tenth_db` ignored
+  GAIN_MODE_MANUAL      = 2;  // use `gain_tenth_db`; must be a supported step
+}
+
+message ClassifyFrequencyRequest {
+  // Required. Target center frequency in Hz. Must fall inside the dongle's
+  // tunable range; INVALID_ARGUMENT otherwise.
+  uint64 target_freq_hz = 1;
+
+  // Optional. Capture window in milliseconds. Minimum 500 (lower values
+  // return INVALID_ARGUMENT); clamped to the configured max (default 10000).
+  // 0 / unset → service default (500 ms).
+  uint32 capture_ms = 2;
+
+  // Optional. Specific RTL-SDR to use. Empty → service picks the first
+  // device returned by sdr_ingestion.ListDevices(). Format: e.g. "rtlsdr:0".
+  string device_id = 3;
+
+  // Optional. Tuner gain mode.
+  //   UNSPECIFIED → service default (currently AUTO).
+  //   AUTO        → ignore `gain_tenth_db`.
+  //   MANUAL      → use `gain_tenth_db`; the service snaps it to the nearest
+  //                 step the device reports in `supported_gains_tenth_db`.
+  GainMode gain_mode = 4;
+
+  // Optional. Manual tuner gain in tenths of a dB (e.g. 287 = 28.7 dB).
+  // Only honoured when `gain_mode == GAIN_MODE_MANUAL`. Out-of-range values
+  // are snapped to the nearest supported step rather than rejected.
+  int32 gain_tenth_db = 5;
+}
+
+message ClassifyFrequencyResponse {
+  Verdict verdict     = 1;
+  bool    is_dmr      = 2;  // mirror of verdict == VERDICT_DMR
+  float   confidence  = 3;  // [0, 1]; see Spec 002 §5.3
+
+  DMREvidence evidence = 4;
+
+  // Echo of what the service actually did.
+  uint64 captured_freq_hz        = 5;
+  uint32 captured_sample_rate_hz = 6;
+  uint32 captured_ms             = 7;
+  uint64 captured_samples        = 8;
+  string device_id_used          = 9;
+
+  // Echo of the resolved gain. `gain_tenth_db_used` is 0 for AUTO mode.
+  GainMode gain_mode_used   = 10;
+  int32    gain_tenth_db_used = 11;
+}
+
+message DMREvidence {
+  // ── DMR test results ──
+  uint32 sync_words_found          = 1;
+  uint32 best_sync_hamming_errors  = 2;
+  uint32 total_sync_hamming_errors = 3;
+  double cfo_hz_used               = 4;
+  uint32 effective_fs_hz           = 5;
+  float  samples_per_symbol        = 6;
+  repeated string matched_sync_types = 7;
+
+  // ── Channel-level features ──
+  float  bandwidth_3db_khz     = 8;
+  float  in_channel_power_dbfs = 9;
+  float  snr_db_estimate       = 10;
+}
