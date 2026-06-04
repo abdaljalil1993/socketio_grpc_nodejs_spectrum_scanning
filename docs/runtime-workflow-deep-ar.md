@@ -479,6 +479,572 @@ stateDiagram-v2
 
 ---
 
+## 8.1) مثال متكامل رقم 1: `DeviceControl.ListDevices`
+
+هذا المثال يشرح أبسط طلب unary فعلي من لحظة تشغيل النظام وحتى لحظة وصول قائمة الأجهزة إلى الفرونت.
+
+### قبل أن يرسل الفرونت أي شيء
+
+1. عند الإقلاع داخل `src/server.ts` يتم استدعاء:
+
+   ```ts
+   const grpcClients = createGrpcClients(...)
+   ```
+
+2. داخل `src/grpc/clients.ts` تنشأ جميع gRPC clients مرة واحدة أثناء الإقلاع، وليس عند كل event من السوكت.
+
+3. بالنسبة لخدمة `DeviceControl`:
+   - يتم أخذ تعريفها من `protoRegistry.services`
+   - يتم إيجاد constructor من الـ proto المحمّل
+   - يتم إنشاء client فعلي هكذا تقريباً:
+
+   ```ts
+   const client = new ServiceClient(serviceTarget, credentials)
+   ```
+
+4. هذا الـ client يُخزَّن داخل `GatewayClients.services` ويصبح جاهزاً لإعادة الاستخدام لاحقاً.
+
+5. بعد ذلك ينفذ السيرفر:
+
+   ```ts
+   await grpcClients.connect(...)
+   ```
+
+6. هنا فقط يتم عمل `waitForReady()` لكل خدمة للتأكد أن upstream gRPC جاهز قبل استقبال الطلبات الحقيقية.
+
+### ماذا يحدث عندما يتصل الفرونت أول مرة
+
+1. `src/socket/index.ts`
+   داخل `io.on('connection', (socket) => { ... })`
+   يتم التقاط اتصال العميل.
+
+2. ينادي السيرفر `gateway.getServices()`.
+
+3. من هذه البيانات يبني قائمة methods ومنها:
+   - `requestEvent = grpc:invoke:DeviceControl.ListDevices`
+   - `responseEvent = DeviceControl.ListDevices`
+
+4. يرسل السيرفر مباشرة:
+
+   ```text
+   grpc:methods
+   ```
+
+5. هنا يعرف الفرونت أن لديه method اسمها `DeviceControl.ListDevices` وأنها unary وليست stream.
+
+### Payload نموذجي من الفرونت
+
+بما أن `ListDevicesRequest` فارغ في الـ proto، فيمكن أن يرسل الفرونت:
+
+```json
+{
+  "requestId": "list-001"
+}
+```
+
+على event التالي:
+
+```text
+grpc:invoke:DeviceControl.ListDevices
+```
+
+### مسار التنفيذ الدقيق داخل الباك
+
+1. `src/socket/index.ts`
+   الحلقة:
+
+   ```ts
+   for (const method of methods) {
+     socket.on(method.requestEvent, async (message: unknown) => {
+   ```
+
+   تكون قد سجلت مسبقاً listener على `grpc:invoke:DeviceControl.ListDevices`.
+
+2. عندما يصل event من الفرونت، هذا الـ listener هو أول نقطة يلتقط فيها الباك الحدث فعلياً.
+
+3. الرسالة تمر عبر `normalizeMethodInvokeRequest(message)`.
+
+4. الناتج يصبح:
+   - `payload = undefined` أو `{}`
+   - `requestId = list-001`
+
+5. بعد ذلك يُستدعى `handleInvoke()` بالقيم التالية:
+   - `service = DeviceControl`
+   - `method = ListDevices`
+   - `payload = undefined`
+   - `triggerEvent = grpc:invoke:DeviceControl.ListDevices`
+
+6. داخل `handleInvoke()` يتم استدعاء:
+
+   ```ts
+   gateway.invoke(service, method, payload ?? {}, { targetRoom: socket.id })
+   ```
+
+7. هنا ينتقل التنفيذ من طبقة السوكت إلى طبقة الـ gateway داخل `src/grpc/handlers.ts`.
+
+8. داخل `invoke()` ينفذ `resolveMethod('DeviceControl', 'ListDevices')`.
+
+9. `resolveMethod()` يستخدم `clients.getService(serviceName)`.
+
+10. `clients.getService('DeviceControl')` لا ينشئ client جديداً هنا، بل يعيد نفس الـ client الذي أُنشئ وقت startup داخل `createGrpcClients()`.
+
+11. بعد ذلك يجد method من خلال:
+
+   ```ts
+   service.methods.get(methodName.toLowerCase())
+   ```
+
+12. يكتشف أن `ListDevices` هو `unary` لأن:
+   - `requestStream = false`
+   - `responseStream = false`
+
+13. ينفذ validation للطلب:
+
+   ```ts
+   validateWithSchema('sdr_ingestion.v2.ListDevicesRequest', {}, logger)
+   ```
+
+14. بما أن الرسالة فارغة والـ schema يسمح بذلك، ينجح التحقق.
+
+15. يحدد timeout عبر `resolveRequestTimeoutMs(...)`.
+
+16. الآن فقط يحصل الاستدعاء الفعلي للـ gRPC method على الـ client الجاهز:
+
+   ```ts
+   (service.client as any)[method.clientMethodName](parsedPayload, callback)
+   ```
+
+17. في هذا المثال `method.clientMethodName` تكون `listDevices` لأن `clients.ts` يطبق `lowerFirst()` على اسم الـ method القادم من الـ proto.
+
+18. إذن الاستدعاء الفعلي يصبح منطقياً:
+
+   ```ts
+   service.client.listDevices({}, callback)
+   ```
+
+19. الطلب يخرج من الباك نحو upstream gRPC server الخاص بـ `sdr_ingestion.v2.DeviceControl`.
+
+20. عندما يعود `ListDevicesResponse`، يستكمل callback داخل `invoke()`.
+
+21. قبل إعادة النتيجة إلى طبقة السوكت، ينفذ الباك:
+
+   ```ts
+   emitValidatedMessage(service, method, response, {
+     broadcast: false,
+     targetRooms: new Set([socket.id])
+   })
+   ```
+
+22. داخل `emitValidatedMessage()`:
+   - يتم التحقق من `sdr_ingestion.v2.ListDevicesResponse`
+   - إذا كانت البنية صحيحة، يتم استدعاء `SocketEmitter.emit()`
+
+23. `src/socket/emitter.ts` يرسل الحدث التالي إلى نفس socket فقط:
+
+   ```text
+   DeviceControl.ListDevices
+   ```
+
+24. بعد ذلك فقط يعود `gateway.invoke()` إلى `handleInvoke()` بالقيمة:
+
+   ```json
+   {
+     "mode": "unary",
+     "eventName": "DeviceControl.ListDevices",
+     "payload": {
+       "devices": []
+     }
+   }
+   ```
+
+25. `handleInvoke()` يرسل event envelope إضافياً هو:
+
+   ```text
+   grpc:result
+   ```
+
+26. هذا الـ event يحتوي:
+   - `requestId`
+   - `triggerEvent`
+   - `service`
+   - `method`
+   - `result`
+
+### ماذا يرى الفرونت في النهاية
+
+الفرونت ينبغي أن يكون مشتركاً في حدثين على الأقل:
+
+- `DeviceControl.ListDevices`
+- `grpc:result`
+
+والتسلسل العملي يكون عادة:
+
+1. وصول البيانات الفعلية على `DeviceControl.ListDevices`
+2. وصول الغلاف التنفيذي على `grpc:result`
+
+### مخطط هذا المثال
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant Socket as src/socket/index.ts
+    participant Gateway as src/grpc/handlers.ts
+    participant Clients as src/grpc/clients.ts
+    participant Upstream as sdr_ingestion.v2.DeviceControl
+    participant Emitter as src/socket/emitter.ts
+
+    FE->>Socket: grpc:invoke:DeviceControl.ListDevices
+    Socket->>Socket: normalizeMethodInvokeRequest()
+    Socket->>Socket: handleInvoke()
+    Socket->>Gateway: invoke(DeviceControl, ListDevices, {}, {targetRoom: socket.id})
+    Gateway->>Clients: getService(DeviceControl)
+    Clients-->>Gateway: existing client from startup
+    Gateway->>Gateway: resolveMethod(ListDevices)
+    Gateway->>Gateway: validateWithSchema(ListDevicesRequest)
+    Gateway->>Upstream: client.listDevices({})
+    Upstream-->>Gateway: ListDevicesResponse
+    Gateway->>Gateway: validateWithSchema(ListDevicesResponse)
+    Gateway->>Emitter: emit(DeviceControl.ListDevices, payload, {room: socket.id})
+    Emitter-->>FE: DeviceControl.ListDevices
+    Gateway-->>Socket: { mode: unary, eventName, payload }
+    Socket-->>FE: grpc:result
+```
+
+---
+
+## 8.2) مثال متكامل رقم 2: التسلسل `ListDevices -> SubscribeSweep -> CloseDevice`
+
+هذا هو المثال الأقرب لطلبك، مع توضيح مهم:
+
+- لا يوجد RPC اسمه `StartSweep` في هذا المشروع
+- البداية الفعلية للسويب تحصل عبر `SpectrumStream.SubscribeSweep`
+- أي أن عبارة `start sweep` على مستوى الفرونت تعني عملياً إرسال event اسمه:
+
+```text
+grpc:invoke:SpectrumStream.SubscribeSweep
+```
+
+### المرحلة A: `ListDevices`
+
+1. الفرونت يتصل أولاً ويستقبل `grpc:methods`.
+2. يرسل `grpc:invoke:DeviceControl.ListDevices`.
+3. الباك يلتقط الحدث في `src/socket/index.ts` كما في المثال السابق.
+4. `gateway.invoke('DeviceControl', 'ListDevices', {}, { targetRoom: socket.id })`.
+5. gRPC يعيد قائمة الأجهزة.
+6. الباك يرسل:
+   - `DeviceControl.ListDevices`
+   - ثم `grpc:result`
+7. الفرونت يختار جهازاً من `devices[]` ويأخذ مثلاً `deviceId`.
+
+### المرحلة B: فتح الجهاز قبل السويب
+
+حتى يبدأ السويب بشكل صحيح، الفرونت عادة يحتاج `sessionId` من `OpenDevice` أولاً، لأن `CloseDeviceRequest` وطلبات الستريم تعمل على session مفتوحة.
+
+الفرونت يرسل مثلاً:
+
+```text
+grpc:invoke:DeviceControl.OpenDevice
+```
+
+مع payload مشابه:
+
+```json
+{
+  "payload": {
+    "deviceId": "rtlsdr:0",
+    "centerFreqHz": "433920000",
+    "sampleRateHz": 2400000,
+    "gainMode": "GAIN_MODE_AGC"
+  },
+  "requestId": "open-sweep-001"
+}
+```
+
+ثم يحصل المسار التالي:
+
+1. `src/socket/index.ts` يلتقط `grpc:invoke:DeviceControl.OpenDevice`.
+2. `normalizeMethodInvokeRequest()` يوحّد الرسالة.
+3. `handleInvoke()` ينادي `gateway.invoke('DeviceControl', 'OpenDevice', payload, { targetRoom: socket.id })`.
+4. `src/grpc/handlers.ts` يتحقق من `OpenDeviceRequest`.
+5. يستدعي الـ client الجاهز مسبقاً:
+
+   ```ts
+   service.client.openDevice(parsedPayload, callback)
+   ```
+
+6. عند رجوع `OpenDeviceResponse`، يرسل الباك:
+   - `DeviceControl.OpenDevice`
+   - ثم `grpc:result`
+7. من هذه النتيجة يحصل الفرونت على `sessionId`.
+
+### المرحلة C: بدء السويب فعلياً عبر `SpectrumStream.SubscribeSweep`
+
+الآن يرسل الفرونت event الستريم:
+
+```text
+grpc:invoke:SpectrumStream.SubscribeSweep
+```
+
+ومعه payload من نوع `SubscribeSweepRequest`، مثلاً:
+
+```json
+{
+  "payload": {
+    "sessionId": "sess-123",
+    "startFreqHz": "430000000",
+    "stopFreqHz": "440000000",
+    "binWidthHz": 25000
+  },
+  "requestId": "sweep-001"
+}
+```
+
+### مسار التنفيذ الدقيق لالتقاط حدث السويب
+
+1. أول ملف يلتقط الحدث هو `src/socket/index.ts`.
+
+2. السبب أن `createSocketServer()` عند اتصال العميل كان قد بنى listeners على كل method في `gateway.getServices()`، ومنها:
+
+   ```ts
+   socket.on('grpc:invoke:SpectrumStream.SubscribeSweep', async (message) => {
+   ```
+
+3. هذا الـ listener يستقبل الرسالة ثم يمررها إلى `normalizeMethodInvokeRequest()`.
+
+4. بعد التطبيع، يستدعي `handleInvoke()` بالقيم:
+   - `service = SpectrumStream`
+   - `method = SubscribeSweep`
+   - `payload = SubscribeSweepRequest`
+   - `requestId = sweep-001`
+
+5. `handleInvoke()` ينفذ:
+
+   ```ts
+   gateway.invoke('SpectrumStream', 'SubscribeSweep', payload, { targetRoom: socket.id })
+   ```
+
+6. هنا ينتقل التنفيذ إلى `src/grpc/handlers.ts`.
+
+7. `resolveMethod()` يبحث عن `SpectrumStream` ثم `SubscribeSweep`.
+
+8. يكتشف أن الـ method ليست unary بل `server-stream` لأن `responseStream = true`.
+
+9. لذلك `invoke()` لا يدخل في مسار callback العادي، بل ينادي:
+
+   ```ts
+   startServerStream(service, method, payload, 'api', options?.targetRoom)
+   ```
+
+10. داخل `startServerStream()` يحدث التالي بالترتيب:
+   - validation لـ `sdr_ingestion.v2.SubscribeSweepRequest`
+   - بناء `streamKey`
+   - فحص هل stream نفسها مفتوحة سابقاً أم لا
+
+11. `streamKey` يُبنى من:
+   - `fullServiceName`
+   - `methodName`
+   - `stableStringify(parsedPayload)`
+
+12. هذا يعني أن streamين بطلبين مطابقين تماماً قد يعيدان استخدام نفس الاشتراك بدلاً من فتح stream ثانية.
+
+13. إذا لم تكن stream موجودة، يتم تنفيذ استدعاء gRPC الفعلي:
+
+   ```ts
+   const call = (service.client as any)[method.clientMethodName](parsedPayload)
+   ```
+
+14. هنا `method.clientMethodName` تكون `subscribeSweep`.
+
+15. إذن الـ client الذي أُنشىء وقت startup يبدأ الآن stream فعلية مع upstream gRPC server.
+
+16. بعد فتح الـ stream، يخزن الباك entry داخل `activeStreams` تحتوي:
+   - `streamKey`
+   - `serviceName`
+   - `methodName`
+   - `eventName`
+   - `payload`
+   - `source = api`
+   - `targetRooms = { socket.id }`
+
+17. بعدها يربط ثلاثة listeners على الـ gRPC call:
+   - `call.on('data')`
+   - `call.on('error')`
+   - `call.on('end')`
+
+18. عند هذه النقطة فقط يعود `startServerStream()` بنتيجة فورية مثل:
+
+   ```json
+   {
+     "streamKey": "...",
+     "status": "started",
+     "eventName": "SpectrumStream.SubscribeSweep"
+   }
+   ```
+
+19. `gateway.invoke()` يعيد إلى `handleInvoke()`:
+
+   ```json
+   {
+     "mode": "server-stream",
+     "streamKey": "...",
+     "status": "started",
+     "eventName": "SpectrumStream.SubscribeSweep"
+   }
+   ```
+
+20. `handleInvoke()` يرسل event واحداً فورياً إلى الفرونت:
+
+   ```text
+   grpc:result
+   ```
+
+21. هذه الرسالة لا تحمل traces نفسها، بل تحمل acknowledgment بأن الستريم بدأت أو أنها كانت موجودة مسبقاً.
+
+### من أين تُلتقط رسائل السويب القادمة من gRPC وكيف تعود إلى الفرونت
+
+1. عندما يرسل upstream أول `SweepTrace`، يتم التقاطها داخل `src/grpc/handlers.ts` في هذا listener:
+
+   ```ts
+   call.on('data', (message) => {
+   ```
+
+2. هذا هو المكان الفعلي الذي يستقبل فيه الباك رسائل الستريم من gRPC.
+
+3. داخل هذا الـ listener ينفذ:
+
+   ```ts
+   emitValidatedMessage(service, method, message, currentStream.delivery)
+   ```
+
+4. `emitValidatedMessage()` يتحقق من response schema الخاصة بـ `SweepTrace`.
+
+5. إذا كانت الرسالة صحيحة، ينادي `src/socket/emitter.ts`:
+
+   ```ts
+   emitter.emit(method.definition.eventName, validatedPayload, { room })
+   ```
+
+6. وبهذا يرسل السيرفر إلى الفرونت event العمل الحقيقي:
+
+   ```text
+   SpectrumStream.SubscribeSweep
+   ```
+
+7. كل trace لاحقة من gRPC تمر في المسار نفسه.
+
+### المرحلة D: إغلاق الجهاز عبر `DeviceControl.CloseDevice`
+
+بعد الانتهاء من السويب، يرسل الفرونت:
+
+```text
+grpc:invoke:DeviceControl.CloseDevice
+```
+
+ومعه payload مثل:
+
+```json
+{
+  "payload": {
+    "sessionId": "sess-123"
+  },
+  "requestId": "close-001"
+}
+```
+
+### مسار التنفيذ الدقيق للإغلاق
+
+1. `src/socket/index.ts` يلتقط `grpc:invoke:DeviceControl.CloseDevice`.
+2. `normalizeMethodInvokeRequest()` تستخرج `payload` و `requestId`.
+3. `handleInvoke()` ينادي:
+
+   ```ts
+   gateway.invoke('DeviceControl', 'CloseDevice', payload, { targetRoom: socket.id })
+   ```
+
+4. `src/grpc/handlers.ts` يدخل مسار unary.
+
+5. يتم التحقق من `sdr_ingestion.v2.CloseDeviceRequest`.
+
+6. ينفذ الاستدعاء الفعلي على gRPC client الجاهز:
+
+   ```ts
+   service.client.closeDevice(parsedPayload, callback)
+   ```
+
+7. عندما يعود `CloseDeviceResponse`:
+   - ينفذ `emitValidatedMessage()`
+   - يرسل `DeviceControl.CloseDevice` إلى نفس العميل
+   - ثم يعود إلى `handleInvoke()`
+   - ثم يرسل `grpc:result`
+
+### ملاحظة مهمة جداً عن تنظيف stream بعد `CloseDevice`
+
+`CloseDevice` بحد ذاته لا يستدعي داخل هذا الباك `releaseTarget()` تلقائياً.
+
+هذا يعني أن تنظيف الاشتراك في `activeStreams` يحصل حالياً في حالة مؤكدة واحدة داخل الكود، وهي:
+
+- عند `socket.on('disconnect')`
+
+أي أن مسار الإغلاق المنطقي للجهاز شيء، ومسار تنظيف اشتراكات السوكت شيء آخر.
+
+بالتالي إذا كان upstream gRPC يُنهي stream السويب تلقائياً بعد إغلاق الـ session، فسيصل أحد الحدثين التاليين داخل `startServerStream()`:
+
+- `call.on('end')`
+- أو `call.on('error')`
+
+وعندها تُحذف من `activeStreams`.
+
+أما إذا لم يُنهِ upstream الستريم تلقائياً، فتنظيفها النهائي يبقى مرتبطاً بانقطاع socket أو بإضافة منطق صريح لاحقاً لإلغاء الاشتراك.
+
+### المخطط الكامل لهذا السيناريو
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant Socket as src/socket/index.ts
+    participant Gateway as src/grpc/handlers.ts
+    participant Device as sdr_ingestion.v2.DeviceControl
+    participant Spectrum as sdr_ingestion.v2.SpectrumStream
+    participant Emitter as src/socket/emitter.ts
+
+    FE->>Socket: grpc:invoke:DeviceControl.ListDevices
+    Socket->>Gateway: invoke(DeviceControl, ListDevices, {}, room)
+    Gateway->>Device: listDevices({})
+    Device-->>Gateway: ListDevicesResponse
+    Gateway->>Emitter: emit(DeviceControl.ListDevices, payload, {room})
+    Emitter-->>FE: DeviceControl.ListDevices
+    Socket-->>FE: grpc:result
+
+    FE->>Socket: grpc:invoke:DeviceControl.OpenDevice
+    Socket->>Gateway: invoke(DeviceControl, OpenDevice, payload, room)
+    Gateway->>Device: openDevice(payload)
+    Device-->>Gateway: OpenDeviceResponse(sessionId)
+    Gateway->>Emitter: emit(DeviceControl.OpenDevice, payload, {room})
+    Emitter-->>FE: DeviceControl.OpenDevice
+    Socket-->>FE: grpc:result
+
+    FE->>Socket: grpc:invoke:SpectrumStream.SubscribeSweep
+    Socket->>Gateway: invoke(SpectrumStream, SubscribeSweep, payload, room)
+    Gateway->>Spectrum: subscribeSweep(payload)
+    Gateway-->>FE: grpc:result { mode: server-stream, status: started }
+
+    loop لكل SweepTrace
+        Spectrum-->>Gateway: SweepTrace
+        Gateway->>Emitter: emit(SpectrumStream.SubscribeSweep, trace, {room})
+        Emitter-->>FE: SpectrumStream.SubscribeSweep
+    end
+
+    FE->>Socket: grpc:invoke:DeviceControl.CloseDevice
+    Socket->>Gateway: invoke(DeviceControl, CloseDevice, payload, room)
+    Gateway->>Device: closeDevice(payload)
+    Device-->>Gateway: CloseDeviceResponse
+    Gateway->>Emitter: emit(DeviceControl.CloseDevice, payload, {room})
+    Emitter-->>FE: DeviceControl.CloseDevice
+    Socket-->>FE: grpc:result
+```
+
+---
+
 ## 9) مسار تنظيف الاشتراكات عند Disconnect
 
 عندما ينقطع عميل socket:
