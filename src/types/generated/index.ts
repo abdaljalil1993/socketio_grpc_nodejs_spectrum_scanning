@@ -337,6 +337,23 @@ export interface SignalRecorderV1DeleteRecordingResponse {
   deleted?: boolean;
 }
 
+export interface SignalRecorderV1DownloadMetadata {
+  filename?: string;
+  totalSizeBytes?: string;
+  sha256Hex?: string;
+  output?: SignalRecorderV1OutputFormat;
+}
+
+export interface SignalRecorderV1DownloadRecordingChunk {
+  metadata?: SignalRecorderV1DownloadMetadata;
+  data?: string;
+}
+
+export interface SignalRecorderV1DownloadRecordingRequest {
+  recordingId?: string;
+  chunkSizeBytes?: number;
+}
+
 export interface SignalRecorderV1GetRecordingRequest {
   recordingId?: string;
 }

@@ -1291,9 +1291,9 @@ IQStream.Subscribe
 
 ---
 
-## 14) ماذا يحدث عند `SignalRecorder.StartRecording` و `SignalRecorder.WatchRecording`
+## 14) ماذا يحدث عند `SignalRecorder.StartRecording` و `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`
 
-هذه الخدمة تضيف مسار تسجيل كامل فوق البوابة الحالية، وفيها 5 أوامر `unary` وأمر `stream` واحد.
+هذه الخدمة تضيف مسار تسجيل كامل فوق البوابة الحالية، وفيها 5 أوامر `unary` وأمران من نوع `stream`.
 
 ### `SignalRecorder.StartRecording`
 
@@ -1346,6 +1346,34 @@ grpc:invoke:SignalRecorder.WatchRecording
    SignalRecorder.WatchRecording
    ```
 
+### `SignalRecorder.DownloadRecording`
+
+الحدث من الفرونت:
+
+```text
+grpc:invoke:SignalRecorder.DownloadRecording
+```
+
+المسار الداخلي:
+
+1. `src/socket/index.ts` يلتقط الحدث.
+2. `handleInvoke()` ينادي:
+
+   ```ts
+   gateway.invoke('SignalRecorder', 'DownloadRecording', payload, { targetRoom: socket.id })
+   ```
+
+3. `invoke()` يكتشف أن `DownloadRecording` من نوع `server-stream`.
+4. `startServerStream()` ينشئ stream جديد أو يعيد استخدام stream موجود لنفس `recordingId` و `chunkSizeBytes`.
+5. يعود مباشرة `grpc:result` إلى الفرونت كـ acknowledgment.
+6. بعد ذلك كل `DownloadRecordingChunk` قادم من gRPC يتحول إلى event socket اسمه:
+
+   ```text
+   SignalRecorder.DownloadRecording
+   ```
+
+7. chunk الأولى تحمل `metadata` عادة، والـ chunks اللاحقة تحمل `data`.
+
 ### التسلسل العملي المعتاد لهذه الخدمة
 
 1. الفرونت يرسل `SignalRecorder.StartRecording`.
@@ -1356,6 +1384,7 @@ grpc:invoke:SignalRecorder.WatchRecording
    - `SignalRecorder.GetRecording`
    - أو `SignalRecorder.StopRecording`
    - أو `SignalRecorder.DeleteRecording`
+   - أو `SignalRecorder.DownloadRecording`
 
 ### مخطط تدفق التسجيل
 
@@ -1385,6 +1414,17 @@ sequenceDiagram
         Gateway->>Emitter: emit(SignalRecorder.WatchRecording, event, {room})
         Emitter-->>FE: SignalRecorder.WatchRecording
     end
+
+   FE->>Socket: grpc:invoke:SignalRecorder.DownloadRecording
+   Socket->>Gateway: invoke(SignalRecorder, DownloadRecording, payload, room)
+   Gateway->>Recorder: DownloadRecording(recordingId, chunkSizeBytes)
+   Gateway-->>FE: grpc:result { mode: server-stream }
+
+   loop لكل chunk
+      Recorder-->>Gateway: DownloadRecordingChunk
+      Gateway->>Emitter: emit(SignalRecorder.DownloadRecording, chunk, {room})
+      Emitter-->>FE: SignalRecorder.DownloadRecording
+   end
 ```
 
 ---
@@ -1412,6 +1452,7 @@ sequenceDiagram
 - `grpc:invoke:SignalRecorder.GetRecording`
 - `grpc:invoke:SignalRecorder.ListRecordings`
 - `grpc:invoke:SignalRecorder.DeleteRecording`
+- `grpc:invoke:SignalRecorder.DownloadRecording`
 
 ### أوامر streaming
 
@@ -1420,6 +1461,7 @@ sequenceDiagram
 - `grpc:invoke:SpectrumStream.SubscribeWaterfall`
 - `grpc:invoke:SpectrumStream.SubscribeSweep`
 - `grpc:invoke:SignalRecorder.WatchRecording`
+- `grpc:invoke:SignalRecorder.DownloadRecording`
 
 ### القاعدة العامة للرد
 

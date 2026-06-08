@@ -72,7 +72,14 @@
       "methodName": "WatchRecording",
       "requestEvent": "grpc:invoke:SignalRecorder.WatchRecording",
       "responseEvent": "SignalRecorder.WatchRecording",
-      "responseStream": false
+      "responseStream": true
+    },
+    {
+      "serviceName": "SignalRecorder",
+      "methodName": "DownloadRecording",
+      "requestEvent": "grpc:invoke:SignalRecorder.DownloadRecording",
+      "responseEvent": "SignalRecorder.DownloadRecording",
+      "responseStream": true
     }
   ]
 }
@@ -118,11 +125,11 @@
 14. الباك يستدعي `DMRClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `DMRClassifier.ClassifyFrequency`.
 15. عندما يريد الفرونت التحقق هل تردد معين يحمل TETRA أم لا، يرسل `grpc:invoke:TETRAClassifier.ClassifyFrequency`.
 16. الباك يستدعي `TETRAClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `TETRAClassifier.ClassifyFrequency`.
-17. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording`.
-18. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording`.
+17. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
+18. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
 19. الباك يطلب الستريم الموافق من gRPC.
 20. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
-21. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `SignalRecorder.WatchRecording`.
+21. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
 
 ## 2.2) أقل سيناريو مطلوب ليبدأ النظام بالعمل
 
@@ -220,6 +227,12 @@ Backend   -> SignalRecorder.WatchRecording (gRPC stream) -> gRPC server
 Backend   -> grpc:result { mode: server-stream } -> Frontend
 gRPC      -> RecordingEvent #1..n -> Backend
 Backend   -> SignalRecorder.WatchRecording #1..n -> Frontend
+
+Frontend  -> grpc:invoke:SignalRecorder.DownloadRecording -> Backend
+Backend   -> SignalRecorder.DownloadRecording (gRPC stream) -> gRPC server
+Backend   -> grpc:result { mode: server-stream } -> Frontend
+gRPC      -> DownloadRecordingChunk #1..n -> Backend
+Backend   -> SignalRecorder.DownloadRecording #1..n -> Frontend
 ```
 
 ## 2.4) ما الذي يجب أن يشترك عليه الفرونت فعليًا
@@ -240,6 +253,7 @@ Backend   -> SignalRecorder.WatchRecording #1..n -> Frontend
 - `SignalRecorder.ListRecordings`
 - `SignalRecorder.DeleteRecording`
 - `SignalRecorder.WatchRecording`
+- `SignalRecorder.DownloadRecording`
 - `IQStream.Subscribe`
 - `SpectrumStream.SubscribeRTSpectrum`
 - `SpectrumStream.SubscribeWaterfall`
@@ -785,7 +799,61 @@ Stream message payload:
 ملاحظات مهمة:
 
 - الحقول `uint64` و `int64` مثل `sequence` و `timestampNs` و `samplesWritten` و `bytesWritten` ستظهر كسلاسل نصية `string`.
-- أوامر `StartRecording` و`StopRecording` و`GetRecording` و`ListRecordings` و`DeleteRecording` هي unary، أما `WatchRecording` فهو server-stream.
+- أوامر `StartRecording` و`StopRecording` و`GetRecording` و`ListRecordings` و`DeleteRecording` هي unary، أما `WatchRecording` و`DownloadRecording` فهما server-stream.
+
+#### `SignalRecorder.DownloadRecording`
+
+هذا الاستدعاء `stream` طويل الأمد مخصص لتنزيل ملف التسجيل على شكل chunks.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:SignalRecorder.DownloadRecording
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+SignalRecorder.DownloadRecording
+```
+
+Request payload:
+
+```json
+{
+  "recordingId": "rec-001",
+  "chunkSizeBytes": 65536
+}
+```
+
+أول رد يصل على `grpc:result` كـ acknowledgment بأن stream بدأت أو أنها موجودة مسبقاً.
+
+أول chunk عملي على `SignalRecorder.DownloadRecording` يكون عادة metadata:
+
+```json
+{
+  "metadata": {
+    "filename": "rec-001.wav",
+    "totalSizeBytes": "10485760",
+    "sha256Hex": "4d5e6f...",
+    "output": "OUTPUT_FORMAT_WAV"
+  }
+}
+```
+
+ثم تصل chunks البيانات اللاحقة على نفس event:
+
+```json
+{
+  "data": "<base64-or-binary-string>"
+}
+```
+
+ملاحظات مهمة:
+
+- الحقل `totalSizeBytes` من نوع `uint64` وسيظهر كسلسلة نصية `string`.
+- الحقل `data` قادم من `bytes` وسيظهر في البوابة الحالية كسلسلة نصية.
+- أول message في الستريم تحمل `metadata`، والرسائل التالية تحمل `data`.
 
 ### DeviceControl Events
 
@@ -1350,6 +1418,7 @@ Stream message payload:
 - `grpc:invoke:SignalRecorder.ListRecordings`
 - `grpc:invoke:SignalRecorder.DeleteRecording`
 - `grpc:invoke:SignalRecorder.WatchRecording`
+- `grpc:invoke:SignalRecorder.DownloadRecording`
 - `grpc:invoke:DeviceControl.ListDevices`
 - `grpc:invoke:DeviceControl.OpenDevice`
 - `grpc:invoke:DeviceControl.CloseDevice`
@@ -1378,6 +1447,7 @@ Stream message payload:
 - `SignalRecorder.ListRecordings`
 - `SignalRecorder.DeleteRecording`
 - `SignalRecorder.WatchRecording`
+- `SignalRecorder.DownloadRecording`
 - `DeviceControl.ListDevices`
 - `DeviceControl.OpenDevice`
 - `DeviceControl.CloseDevice`

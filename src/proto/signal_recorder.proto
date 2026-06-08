@@ -12,6 +12,7 @@ service SignalRecorder {
   rpc ListRecordings  (ListRecordingsRequest)  returns (ListRecordingsResponse);
   rpc DeleteRecording (DeleteRecordingRequest) returns (DeleteRecordingResponse);
   rpc WatchRecording  (WatchRecordingRequest)  returns (stream RecordingEvent);
+  rpc DownloadRecording (DownloadRecordingRequest) returns (stream DownloadRecordingChunk);
 }
 
 enum OutputFormat {
@@ -89,6 +90,29 @@ message DeleteRecordingResponse {
 }
 
 message WatchRecordingRequest { string recording_id = 1; }
+
+// First message of a DownloadRecording stream carries metadata; every
+// subsequent message carries a `data` chunk. A client can therefore learn the
+// filename / total size / checksum before the bytes arrive.
+message DownloadRecordingRequest {
+  string recording_id = 1;
+  // Optional chunk size in bytes (server clamps to a safe range; 0 = default).
+  uint32 chunk_size_bytes = 2;
+}
+
+message DownloadRecordingChunk {
+  oneof payload {
+    DownloadMetadata metadata = 1;  // sent exactly once, first
+    bytes            data     = 2;  // sent repeatedly until EOF
+  }
+}
+
+message DownloadMetadata {
+  string filename = 1;  // suggested download name, e.g. "<id>.wav"
+  uint64 total_size_bytes = 2;
+  string sha256_hex = 3;  // empty if not yet computed
+  OutputFormat output = 4;
+}
 
 message RecordingEvent {
   uint64 sequence = 1;

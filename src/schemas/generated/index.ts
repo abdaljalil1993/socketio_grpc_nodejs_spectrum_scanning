@@ -434,6 +434,29 @@ export const SignalRecorderV1DeleteRecordingResponseSchema = z.lazy(() =>
   }),
 );
 
+export const SignalRecorderV1DownloadMetadataSchema = z.lazy(() =>
+  z.object({
+    filename: z.string().optional(),
+    totalSizeBytes: z.string().optional(),
+    sha256Hex: z.string().optional(),
+    output: SignalRecorderV1OutputFormatSchema.optional(),
+  }),
+);
+
+export const SignalRecorderV1DownloadRecordingChunkSchema = z.lazy(() =>
+  z.object({
+    metadata: SignalRecorderV1DownloadMetadataSchema.optional(),
+    data: z.string().optional(),
+  }),
+);
+
+export const SignalRecorderV1DownloadRecordingRequestSchema = z.lazy(() =>
+  z.object({
+    recordingId: z.string().optional(),
+    chunkSizeBytes: z.number().int().optional(),
+  }),
+);
+
 export const SignalRecorderV1GetRecordingRequestSchema = z.lazy(() =>
   z.object({
     recordingId: z.string().optional(),
@@ -627,6 +650,9 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'sdr_ingestion.v2.WaterfallTile': SdrIngestionV2WaterfallTileSchema,
   'signal_recorder.v1.DeleteRecordingRequest': SignalRecorderV1DeleteRecordingRequestSchema,
   'signal_recorder.v1.DeleteRecordingResponse': SignalRecorderV1DeleteRecordingResponseSchema,
+  'signal_recorder.v1.DownloadMetadata': SignalRecorderV1DownloadMetadataSchema,
+  'signal_recorder.v1.DownloadRecordingChunk': SignalRecorderV1DownloadRecordingChunkSchema,
+  'signal_recorder.v1.DownloadRecordingRequest': SignalRecorderV1DownloadRecordingRequestSchema,
   'signal_recorder.v1.GetRecordingRequest': SignalRecorderV1GetRecordingRequestSchema,
   'signal_recorder.v1.GetRecordingResponse': SignalRecorderV1GetRecordingResponseSchema,
   'signal_recorder.v1.ListRecordingsRequest': SignalRecorderV1ListRecordingsRequestSchema,

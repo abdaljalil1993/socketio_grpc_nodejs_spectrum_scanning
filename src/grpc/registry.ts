@@ -245,6 +245,15 @@ export const protoRegistry = {
         "responseStream": true,
         "requestFieldCount": 1,
         "eventName": "SignalRecorder.WatchRecording"
+      },
+      {
+        "methodName": "DownloadRecording",
+        "requestType": "signal_recorder.v1.DownloadRecordingRequest",
+        "responseType": "signal_recorder.v1.DownloadRecordingChunk",
+        "requestStream": false,
+        "responseStream": true,
+        "requestFieldCount": 2,
+        "eventName": "SignalRecorder.DownloadRecording"
       }
     ]
   },
@@ -287,6 +296,7 @@ export const protoRegistry = {
   "SignalRecorder.ListRecordings",
   "SignalRecorder.DeleteRecording",
   "SignalRecorder.WatchRecording",
+  "SignalRecorder.DownloadRecording",
   "TETRAClassifier.ClassifyFrequency"
 ]
 } as const;
