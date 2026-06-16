@@ -1,7 +1,9 @@
+import 'reflect-metadata';
 import http from 'node:http';
 
 import { createApp } from './app';
 import { env } from './config/env';
+import { initializeDataSource } from './database/data-source';
 import { createGrpcClients } from './grpc/clients';
 import { createGrpcGateway } from './grpc/handlers';
 import { collectProtoFiles, loadGrpcObject } from './grpc/loader';
@@ -10,6 +12,8 @@ import { createSocketServer } from './socket';
 import { logger } from './utils/logger';
 
 const bootstrap = async (): Promise<void> => {
+  await initializeDataSource(logger);
+
   const protoFiles = collectProtoFiles(env.GRPC_PROTO_DIR);
   const grpcObject = loadGrpcObject(protoFiles, env.GRPC_PROTO_DIR);
   const grpcClients = createGrpcClients(

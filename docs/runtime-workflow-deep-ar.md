@@ -793,11 +793,26 @@ grpc:invoke:SpectrumStream.SubscribeSweep
     "sessionId": "sess-123",
     "startFreqHz": "430000000",
     "stopFreqHz": "440000000",
-    "binWidthHz": 25000
+      "binWidthHz": 25000,
+      "harogic": {
+         "startFreqHzSet": true,
+         "startFreqHz": "430000000",
+         "stopFreqHzSet": true,
+         "stopFreqHz": "440000000"
+      }
   },
   "requestId": "sweep-001"
 }
 ```
+
+التغيير الجديد على `HarogicConfig` هو إضافة أربع قيم مرتبطة بمدى السويب:
+
+- `startFreqHzSet`
+- `startFreqHz`
+- `stopFreqHzSet`
+- `stopFreqHz`
+
+المغزى منها أن مدى السويب لم يعد محصوراً فقط في بداية `SubscribeSweepRequest`، بل صار بالإمكان إعادة تمريره أيضاً ضمن إعدادات `harogic` لاستخدامه في `DeviceControl.SetHarogicConfig` لتحديث sweep وهو شغّال.
 
 ### مسار التنفيذ الدقيق لالتقاط حدث السويب
 

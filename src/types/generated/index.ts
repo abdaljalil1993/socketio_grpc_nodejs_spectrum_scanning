@@ -152,6 +152,10 @@ export interface SdrIngestionV2HarogicConfig {
   traceDetector?: SdrIngestionV2HarogicDetector;
   window?: SdrIngestionV2HarogicWindow;
   fftExecution?: SdrIngestionV2HarogicFFTExec;
+  startFreqHzSet?: boolean;
+  startFreqHz?: string;
+  stopFreqHzSet?: boolean;
+  stopFreqHz?: string;
   iqsDecimateFactor?: number;
   iqsTriggerLength?: number;
   rtaFramesPerTile?: number;

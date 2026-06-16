@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 
 import { createApiRouter } from './api/routes';
+import { createSignalRecordRouter } from './api/record-routes';
 // import { env } from './config/env';
 import { GatewayError } from './grpc/handlers';
 import type { GrpcGateway } from './grpc/handlers';
@@ -29,6 +30,7 @@ export const createApp = (gateway: GrpcGateway, logger: Logger): Express => {
     }),
   );
   app.use(express.json({ limit: '1mb' }));
+  app.use(createSignalRecordRouter());
   app.use(createApiRouter(gateway));
 
   app.use((request: Request, response: Response) => {

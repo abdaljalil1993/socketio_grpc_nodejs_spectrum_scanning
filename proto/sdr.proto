@@ -217,6 +217,15 @@ message HarogicConfig {
   HarogicWindow    window         = 21;
   HarogicFFTExec   fft_execution  = 22;
 
+  // ── Sweep range (SWP) ─────────────────────────────────────────
+  // Lets a client retune an in-flight SWP sweep via SetHarogicConfig
+  // (re-arms the device in place) instead of tearing down and
+  // re-opening the SubscribeSweep stream. Ignored unless SWP is armed.
+  bool   start_freq_hz_set = 23;
+  uint64 start_freq_hz     = 24;
+  bool   stop_freq_hz_set  = 25;
+  uint64 stop_freq_hz      = 26;
+
   // ── IQS-specific ──────────────────────────────────────────────
   uint32 iqs_decimate_factor = 30;
   uint32 iqs_trigger_length  = 31;

@@ -1,0 +1,51 @@
+@baseUrl = http://localhost:3000
+@contentType = application/json
+
+### Create signal record
+# @name createSignalRecord
+POST {{baseUrl}}/records
+Content-Type: {{contentType}}
+
+{
+  "iqFile": "capture_001.iq",
+  "sampleRate": 2400000,
+  "dataType": "complex64",
+  "author": "api-test",
+  "collection": "integration-tests",
+  "description": "Test record created from records-api.http",
+  "hardware": "HackRF",
+  "numChannels": 2,
+  "offset": 0,
+  "recorder": "custom-recorder",
+  "trailingBytes": 0,
+  "location": "lab-a",
+  "timeDate": "2026-06-16T09:00:00.000Z",
+  "receiverGain": 18.5,
+  "antennaType": "omni",
+  "antennaLowFrequency": 1000000,
+  "antennaHighFrequency": 6000000000,
+  "antennaGain": 8,
+  "antennaHorizontalBeamWidth": 120,
+  "antennaVerticalBeamWidth": 60,
+  "antennaSteerable": false,
+  "antennaMobile": true,
+  "antennaHagl": 4.5,
+  "threatScore": 7.8,
+  "riskReason": "Repeated signal activity in monitored band",
+  "repeat": 3,
+  "firstSeen": "2026-06-16T08:55:00.000Z",
+  "lastSeen": "2026-06-16T09:05:00.000Z",
+  "patternType": "Periodic",
+  "spectrumImage": "https://example.local/spectrum/001.png",
+  "extensions": {
+    "source": "rest-client",
+    "priority": "high"
+  },
+  "notes": "Created during API verification"
+}
+
+### Get all signal records
+GET {{baseUrl}}/records
+
+### Get the created signal record by UUID
+GET {{baseUrl}}/records/{{createSignalRecord.response.body.record.uuid}}

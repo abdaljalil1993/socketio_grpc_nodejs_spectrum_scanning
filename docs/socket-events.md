@@ -1065,6 +1065,10 @@ Request payload:
 {
   "sessionId": "session-123",
   "config": {
+    "startFreqHzSet": true,
+    "startFreqHz": "88000000",
+    "stopFreqHzSet": true,
+    "stopFreqHz": "108000000",
     "tracePoints": 2048,
     "rbwMode": "HAROGIC_RBW_AUTO",
     "vbwMode": "HAROGIC_VBW_EQUAL_TO_RBW"
@@ -1077,12 +1081,25 @@ Response payload:
 ```json
 {
   "effective": {
+    "startFreqHzSet": true,
+    "startFreqHz": "88000000",
+    "stopFreqHzSet": true,
+    "stopFreqHz": "108000000",
     "tracePoints": 2048,
     "rbwMode": "HAROGIC_RBW_AUTO",
     "vbwMode": "HAROGIC_VBW_EQUAL_TO_RBW"
   }
 }
 ```
+
+الحقول الجديدة داخل `HarogicConfig` هي:
+
+- `startFreqHzSet`
+- `startFreqHz`
+- `stopFreqHzSet`
+- `stopFreqHz`
+
+هذه القيم تسمح بتعديل نطاق السويب أثناء تشغيل session Harogic عبر `DeviceControl.SetHarogicConfig` بدون الحاجة لإغلاق وإعادة فتح `SpectrumStream.SubscribeSweep`.
 
 #### `DeviceControl.ListSessions`
 
@@ -1215,11 +1232,17 @@ Request payload:
   "startFreqHz": "88000000",
   "stopFreqHz": "108000000",
   "harogic": {
+    "startFreqHzSet": true,
+    "startFreqHz": "88000000",
+    "stopFreqHzSet": true,
+    "stopFreqHz": "108000000",
     "tracePoints": 4096,
     "swtMode": "HAROGIC_SWT_MIN"
   }
 }
 ```
+
+تبقى قيم `startFreqHz` و`stopFreqHz` أعلى `SubscribeSweepRequest` كما هي لبدء السويب أول مرة، بينما النسخة الموجودة داخل `harogic` صارت مفيدة أيضاً لتوحيد نفس الإعدادات عند إعادة الضبط عبر `SetHarogicConfig`.
 
 Stream message payload:
 
