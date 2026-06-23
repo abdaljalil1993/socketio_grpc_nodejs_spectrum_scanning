@@ -23,6 +23,9 @@ export const createSignalRecordService = () => ({
 
     return repository.save(record);
   },
+  async deleteByUuid(uuid: string): Promise<void> {
+    await getRepository().delete({ uuid });
+  },
   async findAll(): Promise<SignalRecord[]> {
     return getRepository().find({
       order: {

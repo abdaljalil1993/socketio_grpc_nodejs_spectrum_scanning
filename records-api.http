@@ -1,51 +1,156 @@
 @baseUrl = http://localhost:3000
-@contentType = application/json
+@multipartBoundary = NewSpecBoundary
 
-### Create signal record
+### Create signal record with IQ file upload
 # @name createSignalRecord
 POST {{baseUrl}}/records
-Content-Type: {{contentType}}
+Content-Type: multipart/form-data; boundary={{multipartBoundary}}
 
-{
-  "iqFile": "capture_001.iq",
-  "sampleRate": 2400000,
-  "dataType": "complex64",
-  "author": "api-test",
-  "collection": "integration-tests",
-  "description": "Test record created from records-api.http",
-  "hardware": "HackRF",
-  "numChannels": 2,
-  "offset": 0,
-  "recorder": "custom-recorder",
-  "trailingBytes": 0,
-  "location": "lab-a",
-  "timeDate": "2026-06-16T09:00:00.000Z",
-  "receiverGain": 18.5,
-  "antennaType": "omni",
-  "antennaLowFrequency": 1000000,
-  "antennaHighFrequency": 6000000000,
-  "antennaGain": 8,
-  "antennaHorizontalBeamWidth": 120,
-  "antennaVerticalBeamWidth": 60,
-  "antennaSteerable": false,
-  "antennaMobile": true,
-  "antennaHagl": 4.5,
-  "threatScore": 7.8,
-  "riskReason": "Repeated signal activity in monitored band",
-  "repeat": 3,
-  "firstSeen": "2026-06-16T08:55:00.000Z",
-  "lastSeen": "2026-06-16T09:05:00.000Z",
-  "patternType": "Periodic",
-  "spectrumImage": "https://example.local/spectrum/001.png",
-  "extensions": {
-    "source": "rest-client",
-    "priority": "high"
-  },
-  "notes": "Created during API verification"
-}
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="sampleRate"
+
+2400000
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="dataType"
+
+complex64
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="author"
+
+api-test
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="collection"
+
+integration-tests
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="description"
+
+Test record created from records-api.http
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="hardware"
+
+HackRF
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="numChannels"
+
+2
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="offset"
+
+0
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="recorder"
+
+custom-recorder
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="trailingBytes"
+
+0
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="location"
+
+lab-a
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="timeDate"
+
+2026-06-16T09:00:00.000Z
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="receiverGain"
+
+18.5
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaType"
+
+omni
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaLowFrequency"
+
+1000000
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaHighFrequency"
+
+6000000000
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaGain"
+
+8
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaHorizontalBeamWidth"
+
+120
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaVerticalBeamWidth"
+
+60
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaSteerable"
+
+false
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaMobile"
+
+true
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="antennaHagl"
+
+4.5
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="threatScore"
+
+7.8
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="riskReason"
+
+Repeated signal activity in monitored band
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="repeat"
+
+3
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="firstSeen"
+
+2026-06-16T08:55:00.000Z
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="lastSeen"
+
+2026-06-16T09:05:00.000Z
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="patternType"
+
+Periodic
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="spectrumImage"
+
+https://example.local/spectrum/001.png
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="extensions"
+
+{"source":"rest-client","priority":"high"}
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="notes"
+
+Created during API verification
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="iqFile"; filename="capture_001.iq"
+Content-Type: application/octet-stream
+
+< ./docs/fixtures/capture_001.iq
+--{{multipartBoundary}}--
 
 ### Get all signal records
 GET {{baseUrl}}/records
 
 ### Get the created signal record by UUID
 GET {{baseUrl}}/records/{{createSignalRecord.response.body.record.uuid}}
+
+### Download the SigMF data file only
+GET {{baseUrl}}/records/{{createSignalRecord.response.body.record.uuid}}/sigmf-data
+Accept: application/octet-stream
+
+### Download the SigMF metadata file only
+GET {{baseUrl}}/records/{{createSignalRecord.response.body.record.uuid}}/sigmf-meta
+Accept: application/json
+
+### Download the SigMF ZIP archive containing both .sigmf-data and .sigmf-meta files
+GET {{baseUrl}}/records/{{createSignalRecord.response.body.record.uuid}}/sigmf
+Accept: application/zip

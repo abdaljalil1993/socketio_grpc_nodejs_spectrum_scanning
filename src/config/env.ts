@@ -39,6 +39,7 @@ const baseEnvSchema = z.object({
   GRPC_CONNECT_TIMEOUT_MS: numberFromEnv(5000),
   GRPC_REQUEST_TIMEOUT_MS: numberFromEnv(15000),
   GRPC_PROTO_DIR: z.string().default('src/proto'),
+  RECORDS_STORAGE_DIR: z.string().default('storage/iq-files'),
   SOCKET_PATH: z.string().default('/socket.io'),
   CORS_ORIGIN: z.string().default('*'),
   GRPC_STREAM_SUBSCRIPTIONS: z.string().default('[]')
@@ -107,6 +108,7 @@ const normalizedCorsOrigin =
 export const env = {
   ...parsedEnv.data,
   GRPC_PROTO_DIR: path.resolve(process.cwd(), parsedEnv.data.GRPC_PROTO_DIR),
+  RECORDS_STORAGE_DIR: path.resolve(process.cwd(), parsedEnv.data.RECORDS_STORAGE_DIR),
   corsOrigin: normalizedCorsOrigin,
   grpcMethodTimeouts: parsedMethodTimeouts.data,
   grpcServiceTargets: parsedServiceTargets.data,

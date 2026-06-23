@@ -20,10 +20,13 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.14.1",
     "@grpc/proto-loader": "^0.8.0",
+    "@types/multer": "^2.1.0",
+    "archiver": "^8.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
+    "multer": "^2.2.0",
     "mysql2": "^3.22.5",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
@@ -36,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@types/archiver": "^8.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.0",
