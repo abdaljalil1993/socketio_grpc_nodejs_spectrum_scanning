@@ -1,0 +1,341 @@
+syntax = "proto3";
+
+package droneid.v1;
+
+// DroneID gRPC Service v1
+//
+// Detects DJI drones using an ANTSDR E200 SDR and streams telemetry records in
+// real time. Two hardware connection modes are supported:
+//
+//   Ethernet (default)
+//     The ANTSDR connects to the host via TCP port 52002. dji_receiver.py
+//     decodes the drone data and publishes it over ZMQ (tcp://127.0.0.1:4221).
+//     The server subscribes to that ZMQ feed and forwards records to the client.
+//
+//   USB Serial
+//     The ANTSDR console (/dev/ttyUSBx) outputs dji_O,... CSV lines whenever a
+//     drone is detected. The server reads and parses those lines directly.
+//     NOTE: Docker Desktop on Linux cannot access host USB devices. Run
+//     serial_bridge.py on the host first and set serial_port to
+//     socket://host.docker.internal:9998.
+
+service DroneIDService {
+  // Stream real-time drone telemetry. The RPC stays open until the client
+  // cancels. Status messages are sent as the stream progresses (connected,
+  // retrying, etc.). DroneRecord payloads arrive whenever a drone is detected.
+  rpc StreamDrones (StreamRequest) returns (stream DronePayload);
+
+  // One-shot service health query. Returns counters and the last-used
+  // connection parameters. Safe to call at any time without opening a stream.
+  rpc GetStatus (StatusRequest) returns (ServiceStatus);
+
+  // One-shot AntSDR hardware status query. Returns whether the serial/socket
+  // reader thread is running and whether it has an active connection to the
+  // AntSDR device. Safe to call at any time without opening a stream.
+  rpc GetAntSDRStatus (StatusRequest) returns (AntSDRStatus);
+}
+
+// ── Enums ──────────────────────────────────────────────────────────────────
+
+// Selects how the server connects to the ANTSDR hardware.
+enum ConnectionType {
+  // Ethernet: ANTSDR sends TCP data to the host. dji_receiver.py must be
+  // running (the server starts it automatically) and publishing on ZMQ.
+  CONNECTION_ETHERNET   = 0;
+
+  // USB Serial: server reads dji_O,... CSV lines directly from the ANTSDR's
+  // USB console port. Use serial_port and baud_rate in StreamRequest to
+  // override the device path or baud rate.
+  CONNECTION_USB_SERIAL = 1;
+}
+
+// Selects the drone communication protocol to filter for.
+enum Protocol {
+  // DJI proprietary DroneID — O2, O3, and O4 (encrypted) frames.
+  // The stream emits only records whose protocol string starts with "DJI".
+  PROTOCOL_DJI           = 0;
+
+  // ASTM F3411 / OpenDroneID — unencrypted Remote ID as defined by FAA/EASA.
+  // The stream emits all records, regardless of manufacturer.
+  PROTOCOL_UNIVERSAL_RID = 1;
+}
+
+// ── Request / response messages ────────────────────────────────────────────
+
+// Parameters for StreamDrones. All fields are optional — the server uses
+// sensible defaults when a field is omitted or set to its zero value.
+message StreamRequest {
+  // How to connect to the ANTSDR hardware. Defaults to CONNECTION_ETHERNET.
+  ConnectionType connection_type = 1;
+
+  // Which drone protocol to stream. Defaults to PROTOCOL_DJI.
+  Protocol protocol = 2;
+
+  // ── Ethernet-mode fields (used when connection_type = CONNECTION_ETHERNET) ─
+
+  // IP address of the ANTSDR E200 on the local network.
+  // Default: 172.31.100.2 (WarDragon Pro wiring) or set via ANTSDR_IP env var.
+  string antsdr_ip = 3;
+
+  // TCP port the server listens on for incoming ANTSDR connections.
+  // Default: 52002. Must match the tcp_serverport fw_setenv on the ANTSDR.
+  int32 listen_port = 4;
+
+  // ZMQ SUB endpoint where dji_receiver.py publishes decoded drone records.
+  // Default: tcp://127.0.0.1:4221.
+  // Override if dji_receiver.py is running on a different host or port.
+  string zmq_endpoint = 5;
+
+  // ── USB-Serial-mode fields (used when connection_type = CONNECTION_USB_SERIAL) ─
+
+  // Path to the ANTSDR serial device on the server host.
+  // Default: /dev/ttyUSB0.
+  //
+  // Docker Desktop on Linux cannot pass USB devices into containers. In that
+  // case run serial_bridge.py on the host and set this to:
+  //   socket://host.docker.internal:9998
+  // The server detects the socket:// prefix and uses pyserial's TCP handler.
+  string serial_port = 6;
+
+  // Baud rate for the serial port connection.
+  // Default: 115200 (standard ANTSDR console speed).
+  // Ignored when serial_port uses the socket:// scheme.
+  int32 baud_rate = 7;
+}
+
+// Normalised drone telemetry record emitted for every detected drone.
+// Field values are zero / false / empty when the hardware did not provide them.
+message DroneRecord {
+  // Unique drone identifier (serial number or derived hash for O4 drones).
+  string serial = 1;
+
+  // Protocol string: "DJI-O2", "DJI-O3", "DJI-O4", "ASTM-F3411", etc.
+  string protocol = 2;
+
+  // Drone GPS position (WGS-84 decimal degrees).
+  double drone_lat = 3;
+  double drone_lon = 4;
+
+  // Drone altitude above the WGS-84 ellipsoid, in metres.
+  double altitude_m = 5;
+
+  // Drone horizontal ground speed, in metres per second.
+  double speed_ms = 6;
+
+  // Home point GPS position (where the drone took off), decimal degrees.
+  double home_lat = 7;
+  double home_lon = 8;
+
+  // Pilot / remote controller GPS position, decimal degrees.
+  double pilot_lat = 9;
+  double pilot_lon = 10;
+
+  // Received Signal Strength Indicator in dBm (negative value; stronger = closer to 0).
+  float rssi = 11;
+
+  // Human-readable model name, e.g. "Mavic 3" or the raw DJI device description.
+  string description = 12;
+
+  // Source identifier: serial device path or ZMQ endpoint the data came from.
+  string source = 13;
+
+  // Unix timestamp in milliseconds when this record was decoded on the server.
+  int64 timestamp_ms = 14;
+
+  // ── Extended fields (populated from DroneSecurity enrichment when available) ─
+
+  // True when the drone's motors are spinning.
+  bool motor_on = 15;
+
+  // True when the drone has taken off and is airborne.
+  bool in_air = 16;
+
+  // True when the drone has a valid GPS fix.
+  bool gps_valid = 17;
+
+  // True when the home point has been recorded by the drone.
+  bool home_set = 18;
+
+  // True when the serial number field contains a genuine hardware serial
+  // (false for hash-derived IDs used with encrypted O4 drones).
+  bool serial_valid = 19;
+
+  // GPS timestamp from the drone's onboard GNSS receiver, Unix ms.
+  int64 gps_time_ms = 20;
+
+  // Velocity components in centimetres per second (NED frame).
+  int32 v_north_cms = 21;
+  int32 v_east_cms  = 22;
+  int32 v_up_cms    = 23;
+
+  // True when the raw IQ snapshot was successfully decoded.
+  bool iq_decoded = 24;
+
+  // Drone-side frame sequence number (wraps at hardware limit).
+  int32 sequence_number = 25;
+
+  // Free-form state string from the drone firmware, e.g. "Hovering".
+  string state_info = 26;
+}
+
+// Raw, pre-decode drone signal entry (one dji_O CSV line parsed server-side).
+// Emitted for every detected signal before DJI DroneID decoding — useful for
+// logging all RF activity, even frames where decoding may fail.
+message RawSignal {
+  // Protocol variant string from the AntSDR, e.g. "DJI-O2", "DJI-O3".
+  string protocol    = 1;
+
+  // Received Signal Strength Indicator in dBm (negative; higher = stronger).
+  float  rssi        = 2;
+
+  // Human-readable model name as reported by the AntSDR firmware.
+  string model       = 3;
+
+  // Drone serial number, or a server-derived ID when the firmware omits it.
+  string serial      = 4;
+
+  // Drone GPS position (WGS-84 decimal degrees).
+  double lat         = 5;
+  double lon         = 6;
+
+  // Drone altitude above the WGS-84 ellipsoid, in metres.
+  double altitude_m  = 7;
+
+  // Horizontal ground speed in metres per second (derived from ve/vn fields).
+  double speed_ms    = 8;
+
+  // Truncated raw CSV line (max 120 chars) for debugging.
+  string raw_line    = 9;
+
+  // Unix timestamp in milliseconds when this record was parsed on the server.
+  int64  timestamp_ms = 10;
+
+  // Detection frequency in MHz (parts[2] of the dji_O CSV line).
+  float  frequency_mhz = 11;
+}
+
+// One text line from the AntSDR serial console, classified by semantic level.
+// Emitted for every line received on the serial/socket port so the dashboard
+// can display the live AntSDR console without an SSE connection.
+message ConsoleLog {
+  // Raw text line from the AntSDR output (ANSI escape codes stripped).
+  string line  = 1;
+
+  // Semantic classification used by the dashboard for colour-coding:
+  //   "raw"    — PPM calibration, generic AntSDR output
+  //   "drone"  — dji_O CSV line (a detected drone signal)
+  //   "status" — connection events (Opening, Connected, etc.)
+  //   "err"    — error messages
+  //   "grpc"   — server-generated gRPC stream events
+  string level = 2;
+}
+
+// One AntSDR scan cycle result. Emitted every time the AntSDR outputs a
+// PPM calibration line, which marks the end of one scan sweep.
+message ScanStatus {
+  // AntSDR-reported timestamp string from the log line
+  // (e.g. "1970-01-01 00:15:34.225").
+  string scan_time = 1;
+
+  // Frequency offset in PPM (parts per million) reported by the AntSDR.
+  // Negative values are normal — indicates the oscillator is running slightly slow.
+  float ppm = 2;
+
+  // True if at least one drone was detected during this scan cycle
+  // (a dji_O line was received since the previous ScanStatus).
+  bool detected = 3;
+
+  // Unix timestamp in milliseconds when this line was received by the server.
+  int64 timestamp_ms = 4;
+}
+
+// A single message in the StreamDrones response stream.
+// Carries one of five payload types so every data source the dashboard needs
+// flows through a single gRPC stream — no SSE or REST polling required.
+message DronePayload {
+  // Server-assigned monotonically increasing counter for this stream session.
+  // Starts at 0 for the first status message; useful for detecting gaps.
+  int64 sequence = 1;
+
+  // Unix timestamp in milliseconds when this payload was created on the server.
+  int64 timestamp_ms = 2;
+
+  // Exactly one of these fields is set per message.
+  oneof payload {
+    // Fully decoded drone telemetry record. Present when a drone is detected.
+    DroneRecord  drone           = 3;
+
+    // Human-readable status update: connection progress, errors, retries.
+    // Always sent as the first message when the stream opens.
+    string       status_message  = 4;
+
+    // Pre-decode raw signal from a dji_O CSV line. Emitted alongside every
+    // DroneRecord so the Raw Signals table can be populated without SSE.
+    RawSignal    raw_signal      = 5;
+
+    // One line from the AntSDR serial console. Emitted for every line
+    // received so the AntSDR Console panel works without SSE.
+    ConsoleLog   console_log     = 6;
+
+    // AntSDR hardware connection state change (connect / disconnect / retry).
+    // Emitted whenever the background reader thread changes state.
+    AntSDRStatus hardware_status = 7;
+
+    // AntSDR scan cycle result. Emitted on every PPM calibration line —
+    // one per scan sweep. Contains the PPM offset, AntSDR clock, and
+    // whether a drone was detected in that sweep.
+    ScanStatus   scan_status     = 8;
+  }
+}
+
+// Empty request — GetStatus takes no parameters.
+message StatusRequest {}
+
+// Current health and statistics for the running service.
+message ServiceStatus {
+  // True while the gRPC server is accepting requests.
+  bool running = 1;
+
+  // ConnectionType name of the most recent (or active) StreamDrones call.
+  // Empty string if no stream has been opened since startup.
+  string connection_type = 2;
+
+  // Protocol name of the most recent (or active) StreamDrones call.
+  string protocol = 3;
+
+  // Total number of DroneRecord payloads emitted across all streams since
+  // the server started.
+  int64 drone_count = 4;
+
+  // Milliseconds elapsed since the server process started.
+  int64 uptime_ms = 5;
+
+  // Number of StreamDrones RPCs currently open (active gRPC clients).
+  int64 active_streams = 6;
+
+  // Non-empty when the server encountered a fatal startup error.
+  string error = 7;
+}
+
+// Real-time AntSDR hardware connection state.
+// Returned by GetAntSDRStatus. Reflects the state of the background serial
+// reader thread that feeds both the web dashboard and gRPC USB_SERIAL streams.
+message AntSDRStatus {
+  // True when the serial reader thread is alive (port is in use / being retried).
+  bool busy = 1;
+
+  // True when the reader has an established, active connection to the AntSDR.
+  // Can be false while busy=true during initial connection or retry back-off.
+  bool connected = 2;
+
+  // Port or socket address currently in use, e.g. "/dev/ttyUSB0" or
+  // "socket://host.docker.internal:9998". Empty when busy=false.
+  string source = 3;
+
+  // Unix millisecond timestamp of the most recent drone detection record.
+  // Zero if no drone has been detected in this session.
+  int64 last_signal_ms = 4;
+
+  // Total drone records emitted in this session (all connection types).
+  int64 drone_count = 5;
+}

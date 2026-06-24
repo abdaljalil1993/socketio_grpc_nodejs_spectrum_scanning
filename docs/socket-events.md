@@ -54,6 +54,27 @@
       "responseStream": false
     },
     {
+      "serviceName": "DroneIDService",
+      "methodName": "StreamDrones",
+      "requestEvent": "grpc:invoke:DroneIDService.StreamDrones",
+      "responseEvent": "DroneIDService.StreamDrones",
+      "responseStream": true
+    },
+    {
+      "serviceName": "DroneIDService",
+      "methodName": "GetStatus",
+      "requestEvent": "grpc:invoke:DroneIDService.GetStatus",
+      "responseEvent": "DroneIDService.GetStatus",
+      "responseStream": false
+    },
+    {
+      "serviceName": "DroneIDService",
+      "methodName": "GetAntSDRStatus",
+      "requestEvent": "grpc:invoke:DroneIDService.GetAntSDRStatus",
+      "responseEvent": "DroneIDService.GetAntSDRStatus",
+      "responseStream": false
+    },
+    {
       "serviceName": "TETRAClassifier",
       "methodName": "ClassifyFrequency",
       "requestEvent": "grpc:invoke:TETRAClassifier.ClassifyFrequency",
@@ -235,6 +256,32 @@ gRPC      -> DownloadRecordingChunk #1..n -> Backend
 Backend   -> SignalRecorder.DownloadRecording #1..n -> Frontend
 ```
 
+### بدء كشف الطائرات
+
+```text
+Frontend  -> grpc:invoke:DroneIDService.StreamDrones -> Backend
+Backend   -> DroneIDService.StreamDrones (gRPC stream) -> gRPC server
+Backend   -> grpc:result { mode: server-stream } -> Frontend
+gRPC      -> DronePayload #1..n -> Backend (status / drone / raw_signal / console_log / hardware_status / scan_status)
+Backend   -> DroneIDService.StreamDrones #1..n -> Frontend
+```
+
+### الاستعلام عن حالة DroneID
+
+```text
+Frontend  -> grpc:invoke:DroneIDService.GetStatus -> Backend
+Backend   -> DroneIDService.GetStatus (gRPC) -> gRPC server
+gRPC      -> ServiceStatus -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> DroneIDService.GetStatus -> Frontend
+
+Frontend  -> grpc:invoke:DroneIDService.GetAntSDRStatus -> Backend
+Backend   -> DroneIDService.GetAntSDRStatus (gRPC) -> gRPC server
+gRPC      -> AntSDRStatus -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> DroneIDService.GetAntSDRStatus -> Frontend
+```
+
 ## 2.4) ما الذي يجب أن يشترك عليه الفرونت فعليًا
 
 الفرونت يجب أن يراقب على الأقل هذه الأحداث:
@@ -246,6 +293,9 @@ Backend   -> SignalRecorder.DownloadRecording #1..n -> Frontend
 - `DeviceControl.OpenDevice`
 - `DeviceControl.GetDeviceState`
 - `DMRClassifier.ClassifyFrequency`
+- `DroneIDService.StreamDrones`
+- `DroneIDService.GetStatus`
+- `DroneIDService.GetAntSDRStatus`
 - `TETRAClassifier.ClassifyFrequency`
 - `SignalRecorder.StartRecording`
 - `SignalRecorder.StopRecording`
@@ -1156,6 +1206,230 @@ Stream message payload:
   "gapBefore": false,
   "droppedChunksBefore": 0,
   "droppedSamplesBefore": "0"
+}
+```
+
+### DroneIDService Events
+
+#### `DroneIDService.StreamDrones`
+
+هذا stream طويل الأمد متخصص لكشف الطائرات بدون طيار.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:DroneIDService.StreamDrones
+```
+
+الاستدعاء الذي يرسله الباك إلى gRPC:
+
+```text
+DroneIDService.StreamDrones
+```
+
+Request payload (Ethernet mode):
+
+```json
+{
+  "connectionType": "CONNECTION_ETHERNET",
+  "protocol": "PROTOCOL_DJI",
+  "antsdrIp": "172.31.100.2",
+  "listenPort": 52002,
+  "zmqEndpoint": "tcp://127.0.0.1:4221"
+}
+```
+
+Request payload (USB Serial mode):
+
+```json
+{
+  "connectionType": "CONNECTION_USB_SERIAL",
+  "protocol": "PROTOCOL_DJI",
+  "serialPort": "/dev/ttyUSB0",
+  "baudRate": 115200
+}
+```
+
+أول رد يصل على `grpc:result` كـ acknowledgment بأن stream بدأ.
+
+Stream messages التالية تصل على `DroneIDService.StreamDrones` بأشكال مختلفة:
+
+**رسالة الحالة الأولية**:
+
+```json
+{
+  "sequence": "0",
+  "timestampMs": "1719188400000",
+  "statusMessage": "AntSDR connected, waiting for drones..."
+}
+```
+
+**رسالة كشف طائرة**:
+
+```json
+{
+  "sequence": "42",
+  "timestampMs": "1719188400000",
+  "drone": {
+    "serial": "4AACJ3L002X9R2",
+    "protocol": "DJI-O3",
+    "droneLat": 37.7749,
+    "droneLon": -122.4194,
+    "altitudeM": 45.5,
+    "speedMs": 8.3,
+    "homeLat": 37.7740,
+    "homeLon": -122.4195,
+    "pilotLat": 37.7750,
+    "pilotLon": -122.4193,
+    "rssi": -65.2,
+    "description": "Mavic 3",
+    "source": "tcp://127.0.0.1:4221",
+    "motorOn": true,
+    "inAir": true,
+    "gpsValid": true,
+    "homeSet": true,
+    "serialValid": true,
+    "vNorthCms": 320,
+    "vEastCms": 410,
+    "vUpCms": -50,
+    "iqDecoded": true,
+    "sequenceNumber": 1234,
+    "stateInfo": "Flying"
+  }
+}
+```
+
+**رسالة إشارة خام**:
+
+```json
+{
+  "sequence": "41",
+  "timestampMs": "1719188399800",
+  "rawSignal": {
+    "protocol": "DJI-O2",
+    "rssi": -70.5,
+    "model": "Mini 2",
+    "serial": "unknown",
+    "lat": 37.7748,
+    "lon": -122.4193,
+    "altitudeM": 15.0,
+    "speedMs": 5.2,
+    "rawLine": "dji_O,5,2452000000,30,-70.5,...",
+    "frequencyMhz": 2452.0
+  }
+}
+```
+
+**رسالة سجل كونسول**:
+
+```json
+{
+  "sequence": "30",
+  "timestampMs": "1719188395000",
+  "consoleLog": {
+    "line": "[2024-06-24 10:30:00] Connected to ANTSDR E200",
+    "level": "status"
+  }
+}
+```
+
+مستويات السجل الممكنة: `"raw"` | `"drone"` | `"status"` | `"err"` | `"grpc"`
+
+**رسالة تحديث حالة ANTSDR**:
+
+```json
+{
+  "sequence": "5",
+  "timestampMs": "1719188401000",
+  "hardwareStatus": {
+    "busy": true,
+    "connected": true,
+    "source": "/dev/ttyUSB0",
+    "lastSignalMs": "1719188400000",
+    "droneCount": "127"
+  }
+}
+```
+
+**رسالة نتيجة الفحص**:
+
+```json
+{
+  "sequence": "38",
+  "timestampMs": "1719188393000",
+  "scanStatus": {
+    "scanTime": "2024-06-24 10:29:52.456",
+    "ppm": -12.3,
+    "detected": true
+  }
+}
+```
+
+ملاحظات مهمة:
+
+- الحقول `uint64` و `int64` مثل `sequence`، `timestampMs`، `droneCount` ستظهر كسلاسل نصية `string`.
+- أسماء الحقول بصيغة `camelCase` وليس `snake_case`.
+- Oneof البنية تعني أن فقط **واحد من الحقول** التالي سيكون موجود: `drone`, `statusMessage`, `rawSignal`, `consoleLog`, `hardwareStatus`, أو `scanStatus`.
+
+#### `DroneIDService.GetStatus`
+
+هذا استدعاء `unary` لمعرفة الحالة الكلية للخدمة.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:DroneIDService.GetStatus
+```
+
+Request payload:
+
+```json
+{}
+```
+
+أول رد يصل على `grpc:result` كـ acknowledgment.
+
+الرد على `DroneIDService.GetStatus`:
+
+```json
+{
+  "running": true,
+  "connectionType": "CONNECTION_ETHERNET",
+  "protocol": "PROTOCOL_DJI",
+  "droneCount": "237",
+  "uptimeMs": "3600000",
+  "activeStreams": "3",
+  "error": ""
+}
+```
+
+#### `DroneIDService.GetAntSDRStatus`
+
+هذا استدعاء `unary` للحصول على حالة جهاز ANTSDR بالتحديد.
+
+الحدث الذي يرسله الفرونت إلى الباك:
+
+```text
+grpc:invoke:DroneIDService.GetAntSDRStatus
+```
+
+Request payload:
+
+```json
+{}
+```
+
+أول رد يصل على `grpc:result` كـ acknowledgment.
+
+الرد على `DroneIDService.GetAntSDRStatus`:
+
+```json
+{
+  "busy": true,
+  "connected": true,
+  "source": "tcp://172.31.100.2:52002",
+  "lastSignalMs": "1719188400000",
+  "droneCount": "237"
 }
 ```
 

@@ -19,6 +19,7 @@ export interface ProtoServiceRegistry {
 export const protoRegistry = {
   protoFiles: [
   "src/proto/dmr_classifier.proto",
+  "src/proto/droneid_service.proto",
   "src/proto/sdr.proto",
   "src/proto/signal_recorder.proto",
   "src/proto/tetra_classifier.proto"
@@ -37,6 +38,40 @@ export const protoRegistry = {
         "responseStream": false,
         "requestFieldCount": 5,
         "eventName": "DMRClassifier.ClassifyFrequency"
+      }
+    ]
+  },
+  {
+    "packageName": "droneid.v1",
+    "serviceName": "DroneIDService",
+    "fullServiceName": "droneid.v1.DroneIDService",
+    "methods": [
+      {
+        "methodName": "StreamDrones",
+        "requestType": "droneid.v1.StreamRequest",
+        "responseType": "droneid.v1.DronePayload",
+        "requestStream": false,
+        "responseStream": true,
+        "requestFieldCount": 7,
+        "eventName": "DroneIDService.StreamDrones"
+      },
+      {
+        "methodName": "GetStatus",
+        "requestType": "droneid.v1.StatusRequest",
+        "responseType": "droneid.v1.ServiceStatus",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 0,
+        "eventName": "DroneIDService.GetStatus"
+      },
+      {
+        "methodName": "GetAntSDRStatus",
+        "requestType": "droneid.v1.StatusRequest",
+        "responseType": "droneid.v1.AntSDRStatus",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 0,
+        "eventName": "DroneIDService.GetAntSDRStatus"
       }
     ]
   },
@@ -276,6 +311,9 @@ export const protoRegistry = {
 ],
   eventNames: [
   "DMRClassifier.ClassifyFrequency",
+  "DroneIDService.StreamDrones",
+  "DroneIDService.GetStatus",
+  "DroneIDService.GetAntSDRStatus",
   "DeviceControl.ListDevices",
   "DeviceControl.OpenDevice",
   "DeviceControl.CloseDevice",

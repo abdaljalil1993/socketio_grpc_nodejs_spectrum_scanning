@@ -4,6 +4,10 @@ export type DmrClassifierV1GainMode = 'GAIN_MODE_UNSPECIFIED' | 'GAIN_MODE_AUTO'
 
 export type DmrClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_DMR' | 'VERDICT_NOT_DMR' | 'VERDICT_INCONCLUSIVE';
 
+export type DroneidV1ConnectionType = 'CONNECTION_ETHERNET' | 'CONNECTION_USB_SERIAL';
+
+export type DroneidV1Protocol = 'PROTOCOL_DJI' | 'PROTOCOL_UNIVERSAL_RID';
+
 export type SdrIngestionV2CaptureMode = 'CAPTURE_MODE_UNSPECIFIED' | 'CAPTURE_MODE_NONE' | 'CAPTURE_MODE_IQS' | 'CAPTURE_MODE_RTA_SPECTRUM' | 'CAPTURE_MODE_RTA_WATERFALL' | 'CAPTURE_MODE_SWP_SWEEP' | 'CAPTURE_MODE_DET';
 
 export type SdrIngestionV2DeviceKind = 'DEVICE_KIND_UNSPECIFIED' | 'DEVICE_KIND_RTLSDR' | 'DEVICE_KIND_HACKRF' | 'DEVICE_KIND_HAROGIC';
@@ -73,6 +77,103 @@ export interface DmrClassifierV1DMREvidence {
   bandwidth_3dbKhz?: number;
   inChannelPowerDbfs?: number;
   snrDbEstimate?: number;
+}
+
+export interface DroneidV1AntSDRStatus {
+  busy?: boolean;
+  connected?: boolean;
+  source?: string;
+  lastSignalMs?: string;
+  droneCount?: string;
+}
+
+export interface DroneidV1ConsoleLog {
+  line?: string;
+  level?: string;
+}
+
+export interface DroneidV1DronePayload {
+  sequence?: string;
+  timestampMs?: string;
+  drone?: DroneidV1DroneRecord;
+  statusMessage?: string;
+  rawSignal?: DroneidV1RawSignal;
+  consoleLog?: DroneidV1ConsoleLog;
+  hardwareStatus?: DroneidV1AntSDRStatus;
+  scanStatus?: DroneidV1ScanStatus;
+}
+
+export interface DroneidV1DroneRecord {
+  serial?: string;
+  protocol?: string;
+  droneLat?: number;
+  droneLon?: number;
+  altitudeM?: number;
+  speedMs?: number;
+  homeLat?: number;
+  homeLon?: number;
+  pilotLat?: number;
+  pilotLon?: number;
+  rssi?: number;
+  description?: string;
+  source?: string;
+  timestampMs?: string;
+  motorOn?: boolean;
+  inAir?: boolean;
+  gpsValid?: boolean;
+  homeSet?: boolean;
+  serialValid?: boolean;
+  gpsTimeMs?: string;
+  vNorthCms?: number;
+  vEastCms?: number;
+  vUpCms?: number;
+  iqDecoded?: boolean;
+  sequenceNumber?: number;
+  stateInfo?: string;
+}
+
+export interface DroneidV1RawSignal {
+  protocol?: string;
+  rssi?: number;
+  model?: string;
+  serial?: string;
+  lat?: number;
+  lon?: number;
+  altitudeM?: number;
+  speedMs?: number;
+  rawLine?: string;
+  timestampMs?: string;
+  frequencyMhz?: number;
+}
+
+export interface DroneidV1ScanStatus {
+  scanTime?: string;
+  ppm?: number;
+  detected?: boolean;
+  timestampMs?: string;
+}
+
+export interface DroneidV1ServiceStatus {
+  running?: boolean;
+  connectionType?: string;
+  protocol?: string;
+  droneCount?: string;
+  uptimeMs?: string;
+  activeStreams?: string;
+  error?: string;
+}
+
+export interface DroneidV1StatusRequest {
+}
+
+export interface DroneidV1StreamRequest {
+  connectionType?: DroneidV1ConnectionType;
+  protocol?: DroneidV1Protocol;
+  antsdrIp?: string;
+  listenPort?: number;
+  zmqEndpoint?: string;
+  serialPort?: string;
+  baudRate?: number;
 }
 
 export interface SdrIngestionV2CloseDeviceRequest {

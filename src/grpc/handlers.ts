@@ -186,6 +186,74 @@ export const createGrpcGateway = ({
     return { service, method };
   };
 
+  const normalizeResponsePayload = (payload: unknown, responseType: string): unknown => {
+    if (responseType !== 'signal_recorder.v1.DownloadRecordingChunk') {
+      return payload;
+    }
+
+    const unwrapPayload = (value: unknown): unknown => {
+      if (Buffer.isBuffer(value)) {
+        return { data: value.toString('base64') };
+      }
+
+      if (value instanceof Uint8Array) {
+        return { data: Buffer.from(value).toString('base64') };
+      }
+
+      if (typeof value === 'string') {
+        return { data: value };
+      }
+
+      if (Array.isArray(value)) {
+        return value.map(unwrapPayload);
+      }
+
+      if (!value || typeof value !== 'object') {
+        return value;
+      }
+
+      const anyValue = value as any;
+      if ('payload' in anyValue && anyValue.payload != null && anyValue.payload !== anyValue) {
+        return unwrapPayload(anyValue.payload);
+      }
+
+      const copy: Record<string, unknown> = {};
+      for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+        if (key === 'payload') {
+          continue;
+        }
+
+        copy[key] = unwrapPayload(nestedValue);
+      }
+
+      return copy;
+    };
+
+    try {
+      const normalized = unwrapPayload(payload);
+
+      if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
+        const copy = { ...(normalized as Record<string, unknown>) };
+
+        if (copy.data != null) {
+          const value = copy.data as unknown;
+
+          if (Buffer.isBuffer(value)) {
+            copy.data = value.toString('base64');
+          } else if (value instanceof Uint8Array) {
+            copy.data = Buffer.from(value).toString('base64');
+          }
+        }
+
+        return copy;
+      }
+
+      return normalized;
+    } catch {
+      return payload;
+    }
+  };
+
   const emitValidatedMessage = (
     service: GatewayServiceClient,
     method: GatewayMethodClient,
@@ -202,7 +270,8 @@ export const createGrpcGateway = ({
     );
 
     try {
-      const validatedPayload = validateWithSchema(method.definition.responseType, payload, logger);
+      const normalizedPayload = normalizeResponsePayload(payload, method.definition.responseType);
+      const validatedPayload = validateWithSchema(method.definition.responseType, normalizedPayload, logger);
 
       if (delivery.broadcast) {
         emitter.emit(method.definition.eventName, validatedPayload);

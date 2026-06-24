@@ -7,6 +7,12 @@ export const DmrClassifierV1GainModeSchema = z.enum(DmrClassifierV1GainModeValue
 export const DmrClassifierV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_DMR', 'VERDICT_NOT_DMR', 'VERDICT_INCONCLUSIVE'] as const;
 export const DmrClassifierV1VerdictSchema = z.enum(DmrClassifierV1VerdictValues);
 
+export const DroneidV1ConnectionTypeValues = ['CONNECTION_ETHERNET', 'CONNECTION_USB_SERIAL'] as const;
+export const DroneidV1ConnectionTypeSchema = z.enum(DroneidV1ConnectionTypeValues);
+
+export const DroneidV1ProtocolValues = ['PROTOCOL_DJI', 'PROTOCOL_UNIVERSAL_RID'] as const;
+export const DroneidV1ProtocolSchema = z.enum(DroneidV1ProtocolValues);
+
 export const SdrIngestionV2CaptureModeValues = ['CAPTURE_MODE_UNSPECIFIED', 'CAPTURE_MODE_NONE', 'CAPTURE_MODE_IQS', 'CAPTURE_MODE_RTA_SPECTRUM', 'CAPTURE_MODE_RTA_WATERFALL', 'CAPTURE_MODE_SWP_SWEEP', 'CAPTURE_MODE_DET'] as const;
 export const SdrIngestionV2CaptureModeSchema = z.enum(SdrIngestionV2CaptureModeValues);
 
@@ -99,6 +105,121 @@ export const DmrClassifierV1DMREvidenceSchema = z.lazy(() =>
     bandwidth_3dbKhz: z.number().optional(),
     inChannelPowerDbfs: z.number().optional(),
     snrDbEstimate: z.number().optional(),
+  }),
+);
+
+export const DroneidV1AntSDRStatusSchema = z.lazy(() =>
+  z.object({
+    busy: z.boolean().optional(),
+    connected: z.boolean().optional(),
+    source: z.string().optional(),
+    lastSignalMs: z.string().optional(),
+    droneCount: z.string().optional(),
+  }),
+);
+
+export const DroneidV1ConsoleLogSchema = z.lazy(() =>
+  z.object({
+    line: z.string().optional(),
+    level: z.string().optional(),
+  }),
+);
+
+export const DroneidV1DronePayloadSchema = z.lazy(() =>
+  z.object({
+    sequence: z.string().optional(),
+    timestampMs: z.string().optional(),
+    drone: DroneidV1DroneRecordSchema.optional(),
+    statusMessage: z.string().optional(),
+    rawSignal: DroneidV1RawSignalSchema.optional(),
+    consoleLog: DroneidV1ConsoleLogSchema.optional(),
+    hardwareStatus: DroneidV1AntSDRStatusSchema.optional(),
+    scanStatus: DroneidV1ScanStatusSchema.optional(),
+  }),
+);
+
+export const DroneidV1DroneRecordSchema = z.lazy(() =>
+  z.object({
+    serial: z.string().optional(),
+    protocol: z.string().optional(),
+    droneLat: z.number().optional(),
+    droneLon: z.number().optional(),
+    altitudeM: z.number().optional(),
+    speedMs: z.number().optional(),
+    homeLat: z.number().optional(),
+    homeLon: z.number().optional(),
+    pilotLat: z.number().optional(),
+    pilotLon: z.number().optional(),
+    rssi: z.number().optional(),
+    description: z.string().optional(),
+    source: z.string().optional(),
+    timestampMs: z.string().optional(),
+    motorOn: z.boolean().optional(),
+    inAir: z.boolean().optional(),
+    gpsValid: z.boolean().optional(),
+    homeSet: z.boolean().optional(),
+    serialValid: z.boolean().optional(),
+    gpsTimeMs: z.string().optional(),
+    vNorthCms: z.number().int().optional(),
+    vEastCms: z.number().int().optional(),
+    vUpCms: z.number().int().optional(),
+    iqDecoded: z.boolean().optional(),
+    sequenceNumber: z.number().int().optional(),
+    stateInfo: z.string().optional(),
+  }),
+);
+
+export const DroneidV1RawSignalSchema = z.lazy(() =>
+  z.object({
+    protocol: z.string().optional(),
+    rssi: z.number().optional(),
+    model: z.string().optional(),
+    serial: z.string().optional(),
+    lat: z.number().optional(),
+    lon: z.number().optional(),
+    altitudeM: z.number().optional(),
+    speedMs: z.number().optional(),
+    rawLine: z.string().optional(),
+    timestampMs: z.string().optional(),
+    frequencyMhz: z.number().optional(),
+  }),
+);
+
+export const DroneidV1ScanStatusSchema = z.lazy(() =>
+  z.object({
+    scanTime: z.string().optional(),
+    ppm: z.number().optional(),
+    detected: z.boolean().optional(),
+    timestampMs: z.string().optional(),
+  }),
+);
+
+export const DroneidV1ServiceStatusSchema = z.lazy(() =>
+  z.object({
+    running: z.boolean().optional(),
+    connectionType: z.string().optional(),
+    protocol: z.string().optional(),
+    droneCount: z.string().optional(),
+    uptimeMs: z.string().optional(),
+    activeStreams: z.string().optional(),
+    error: z.string().optional(),
+  }),
+);
+
+export const DroneidV1StatusRequestSchema = z.lazy(() =>
+  z.object({
+  }),
+);
+
+export const DroneidV1StreamRequestSchema = z.lazy(() =>
+  z.object({
+    connectionType: DroneidV1ConnectionTypeSchema.optional(),
+    protocol: DroneidV1ProtocolSchema.optional(),
+    antsdrIp: z.string().optional(),
+    listenPort: z.number().int().optional(),
+    zmqEndpoint: z.string().optional(),
+    serialPort: z.string().optional(),
+    baudRate: z.number().int().optional(),
   }),
 );
 
@@ -619,6 +740,15 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'dmr_classifier.v1.ClassifyFrequencyRequest': DmrClassifierV1ClassifyFrequencyRequestSchema,
   'dmr_classifier.v1.ClassifyFrequencyResponse': DmrClassifierV1ClassifyFrequencyResponseSchema,
   'dmr_classifier.v1.DMREvidence': DmrClassifierV1DMREvidenceSchema,
+  'droneid.v1.AntSDRStatus': DroneidV1AntSDRStatusSchema,
+  'droneid.v1.ConsoleLog': DroneidV1ConsoleLogSchema,
+  'droneid.v1.DronePayload': DroneidV1DronePayloadSchema,
+  'droneid.v1.DroneRecord': DroneidV1DroneRecordSchema,
+  'droneid.v1.RawSignal': DroneidV1RawSignalSchema,
+  'droneid.v1.ScanStatus': DroneidV1ScanStatusSchema,
+  'droneid.v1.ServiceStatus': DroneidV1ServiceStatusSchema,
+  'droneid.v1.StatusRequest': DroneidV1StatusRequestSchema,
+  'droneid.v1.StreamRequest': DroneidV1StreamRequestSchema,
   'sdr_ingestion.v2.CloseDeviceRequest': SdrIngestionV2CloseDeviceRequestSchema,
   'sdr_ingestion.v2.CloseDeviceResponse': SdrIngestionV2CloseDeviceResponseSchema,
   'sdr_ingestion.v2.DeviceDescriptor': SdrIngestionV2DeviceDescriptorSchema,
