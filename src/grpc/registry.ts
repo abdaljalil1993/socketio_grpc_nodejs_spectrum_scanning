@@ -20,6 +20,7 @@ export const protoRegistry = {
   protoFiles: [
   "src/proto/dmr_classifier.proto",
   "src/proto/droneid_service.proto",
+  "src/proto/gsm_classifier.proto",
   "src/proto/sdr.proto",
   "src/proto/signal_recorder.proto",
   "src/proto/tetra_classifier.proto"
@@ -72,6 +73,58 @@ export const protoRegistry = {
         "responseStream": false,
         "requestFieldCount": 0,
         "eventName": "DroneIDService.GetAntSDRStatus"
+      }
+    ]
+  },
+  {
+    "packageName": "gsm_classifier.v1",
+    "serviceName": "GSMClassifier",
+    "fullServiceName": "gsm_classifier.v1.GSMClassifier",
+    "methods": [
+      {
+        "methodName": "ClassifyFrequency",
+        "requestType": "gsm_classifier.v1.ClassifyFrequencyRequest",
+        "responseType": "gsm_classifier.v1.ClassifyFrequencyResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 5,
+        "eventName": "GSMClassifier.ClassifyFrequency"
+      },
+      {
+        "methodName": "AnalyzeCell",
+        "requestType": "gsm_classifier.v1.AnalyzeCellRequest",
+        "responseType": "gsm_classifier.v1.AnalyzeCellResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 5,
+        "eventName": "GSMClassifier.AnalyzeCell"
+      },
+      {
+        "methodName": "ScanBand",
+        "requestType": "gsm_classifier.v1.ScanBandRequest",
+        "responseType": "gsm_classifier.v1.ScanBandResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 9,
+        "eventName": "GSMClassifier.ScanBand"
+      },
+      {
+        "methodName": "ScanActivity",
+        "requestType": "gsm_classifier.v1.ScanActivityRequest",
+        "responseType": "gsm_classifier.v1.ScanActivityResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 6,
+        "eventName": "GSMClassifier.ScanActivity"
+      },
+      {
+        "methodName": "CalibratePPM",
+        "requestType": "gsm_classifier.v1.CalibratePPMRequest",
+        "responseType": "gsm_classifier.v1.CalibratePPMResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 1,
+        "eventName": "GSMClassifier.CalibratePPM"
       }
     ]
   },
@@ -314,6 +367,11 @@ export const protoRegistry = {
   "DroneIDService.StreamDrones",
   "DroneIDService.GetStatus",
   "DroneIDService.GetAntSDRStatus",
+  "GSMClassifier.ClassifyFrequency",
+  "GSMClassifier.AnalyzeCell",
+  "GSMClassifier.ScanBand",
+  "GSMClassifier.ScanActivity",
+  "GSMClassifier.CalibratePPM",
   "DeviceControl.ListDevices",
   "DeviceControl.OpenDevice",
   "DeviceControl.CloseDevice",

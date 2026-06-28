@@ -8,6 +8,14 @@ export type DroneidV1ConnectionType = 'CONNECTION_ETHERNET' | 'CONNECTION_USB_SE
 
 export type DroneidV1Protocol = 'PROTOCOL_DJI' | 'PROTOCOL_UNIVERSAL_RID';
 
+export type GsmClassifierV1GSMBand = 'GSM_BAND_UNSPECIFIED' | 'GSM_BAND_850' | 'GSM_BAND_900' | 'GSM_BAND_1800' | 'GSM_BAND_1900';
+
+export type GsmClassifierV1SignalStatus = 'SIGNAL_STATUS_UNSPECIFIED' | 'NO_FCCH' | 'FCCH_ONLY' | 'FCCH_WEAK_SCH' | 'GSM_CONFIRMED' | 'TCH';
+
+export type GsmClassifierV1Speed = 'SPEED_UNSPECIFIED' | 'SPEED_FAST' | 'SPEED_NORMAL' | 'SPEED_DEEP';
+
+export type GsmClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_GSM' | 'VERDICT_NOT_GSM' | 'VERDICT_INCONCLUSIVE';
+
 export type SdrIngestionV2CaptureMode = 'CAPTURE_MODE_UNSPECIFIED' | 'CAPTURE_MODE_NONE' | 'CAPTURE_MODE_IQS' | 'CAPTURE_MODE_RTA_SPECTRUM' | 'CAPTURE_MODE_RTA_WATERFALL' | 'CAPTURE_MODE_SWP_SWEEP' | 'CAPTURE_MODE_DET';
 
 export type SdrIngestionV2DeviceKind = 'DEVICE_KIND_UNSPECIFIED' | 'DEVICE_KIND_RTLSDR' | 'DEVICE_KIND_HACKRF' | 'DEVICE_KIND_HAROGIC';
@@ -174,6 +182,118 @@ export interface DroneidV1StreamRequest {
   zmqEndpoint?: string;
   serialPort?: string;
   baudRate?: number;
+}
+
+export interface GsmClassifierV1ActivityCell {
+  arfcn?: number;
+  freqHz?: string;
+  powerDbfs?: number;
+  activityType?: string;
+  description?: string;
+}
+
+export interface GsmClassifierV1AnalyzeCellRequest {
+  targetFreqHz?: string;
+  gain?: number;
+  ppm?: number;
+  captureMs?: number;
+  deviceId?: string;
+}
+
+export interface GsmClassifierV1AnalyzeCellResponse {
+  isGsm?: boolean;
+  cid?: number;
+  lac?: number;
+  mcc?: number;
+  mnc?: number;
+  pwr?: number;
+  operator?: string;
+  grgsmAvailable?: boolean;
+  signalStatus?: GsmClassifierV1SignalStatus;
+  tchChannels: number[];
+  neighbours: number[];
+}
+
+export interface GsmClassifierV1CalibratePPMRequest {
+  deviceId?: string;
+}
+
+export interface GsmClassifierV1CalibratePPMResponse {
+  smartPpm?: number;
+  ppmFloat?: number;
+  bestArfcn?: number;
+  status?: string;
+}
+
+export interface GsmClassifierV1CellInfo {
+  arfcn?: number;
+  freqHz?: number;
+  cid?: number;
+  lac?: number;
+  mcc?: number;
+  mnc?: number;
+  pwr?: number;
+  operator?: string;
+  snr?: number;
+  tchChannels: number[];
+  neighbours: number[];
+}
+
+export interface GsmClassifierV1ClassifyFrequencyRequest {
+  targetFreqHz?: string;
+  captureMs?: number;
+  deviceId?: string;
+  bandHint?: GsmClassifierV1GSMBand;
+  gain?: number;
+}
+
+export interface GsmClassifierV1ClassifyFrequencyResponse {
+  isGsm?: boolean;
+  snr?: number;
+  signalStatus?: GsmClassifierV1SignalStatus;
+}
+
+export interface GsmClassifierV1NoActivityArfcnGroup {
+  freqHz: string[];
+  count?: number;
+}
+
+export interface GsmClassifierV1ScanActivityRequest {
+  band?: GsmClassifierV1GSMBand;
+  gain?: number;
+  deviceId?: string;
+  speed?: GsmClassifierV1Speed;
+  ppm?: number;
+  targetArfcns: number[];
+}
+
+export interface GsmClassifierV1ScanActivityResponse {
+  bandName?: string;
+  totalArfcnsScanned?: number;
+  tchActive?: number;
+  scanDurationS?: number;
+  cells: GsmClassifierV1ActivityCell[];
+  noActivityArfcns?: GsmClassifierV1NoActivityArfcnGroup;
+}
+
+export interface GsmClassifierV1ScanBandRequest {
+  band?: GsmClassifierV1GSMBand;
+  gain?: number;
+  ppm?: number;
+  pass2CaptureMs?: number;
+  deviceId?: string;
+  fcchThreshold?: number;
+  snrThreshold?: number;
+  pass1CaptureMs?: number;
+  sampleRateHz?: number;
+}
+
+export interface GsmClassifierV1ScanBandResponse {
+  bandName?: string;
+  cellsFound?: number;
+  grgsmAvailable?: boolean;
+  error?: string;
+  cells: GsmClassifierV1CellInfo[];
 }
 
 export interface SdrIngestionV2CloseDeviceRequest {

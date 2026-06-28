@@ -1,0 +1,185 @@
+syntax = "proto3";
+package gsm_classifier.v1;
+
+// GSM Classifier — Spec 003. Per-frequency yes/no "is this GSM (2G)?"
+// Extended with deep cell analysis via gr-gsm integration.
+
+service GSMClassifier {
+  // Unary one-shot. Fast FCCH detection (NumPy) + optional gr-gsm deep analysis.
+  rpc ClassifyFrequency (ClassifyFrequencyRequest) returns (ClassifyFrequencyResponse);
+
+  // Deep cell analysis using gr-gsm. Decodes BCCH/SI to extract
+  // MCC/MNC/LAC/CID/neighbours/operator.
+  rpc AnalyzeCell (AnalyzeCellRequest) returns (AnalyzeCellResponse);
+
+  // Full band scan. Sweeps GSM-900 or GSM-1800 and returns all detected cells.
+  rpc ScanBand (ScanBandRequest) returns (ScanBandResponse);
+
+  // Band activity scan. Scans TCH frequencies and classifies each carrier
+  // by activity type (TCH_IDLE, TCH_ACTIVE_CALL, NO_ACTIVITY).
+  // No deep decode — fast power + FCCH detection only.
+  rpc ScanActivity (ScanActivityRequest) returns (ScanActivityResponse);
+
+  // PPM calibration. Scans GSM900 FCCH, selects strongest ARFCN,
+  // computes ppm from FCCH frequency offset via FFT.
+  // Returns smart_ppm for manual use in ScanBand/ClassifyFrequency.
+  rpc CalibratePPM (CalibratePPMRequest) returns (CalibratePPMResponse);
+}
+
+// ─────────── Enums ───────────
+
+enum Verdict {
+  VERDICT_UNSPECIFIED  = 0;
+  VERDICT_GSM          = 1;
+  VERDICT_NOT_GSM      = 2;
+  VERDICT_INCONCLUSIVE = 3;
+}
+
+enum SignalStatus {
+  SIGNAL_STATUS_UNSPECIFIED = 0;
+  NO_FCCH = 1;          // No FCCH tone detected (noise or non-GSM)
+  FCCH_ONLY = 2;        // FCCH detected, no SCH burst found
+  FCCH_WEAK_SCH = 3;    // FCCH + weak SCH correlation
+  GSM_CONFIRMED = 4;    // FCCH + strong SCH = real GSM BCCH signal
+  TCH = 5;              // No FCCH, but GSM burst structure detected (TCH carrier)
+}
+
+enum GSMBand {
+  GSM_BAND_UNSPECIFIED = 0;
+  GSM_BAND_850         = 1;
+  GSM_BAND_900         = 2;
+  GSM_BAND_1800        = 3;
+  GSM_BAND_1900        = 4;
+}
+
+enum Speed {
+  SPEED_UNSPECIFIED = 0;
+  SPEED_FAST        = 1;
+  SPEED_NORMAL      = 2;
+  SPEED_DEEP        = 3;
+}
+
+// ─────────── ClassifyFrequency ───────────
+
+message ClassifyFrequencyRequest {
+  uint64 target_freq_hz = 1;
+  uint32 capture_ms = 2;
+  string device_id = 3;
+  GSMBand band_hint = 4;
+  float  gain = 5;
+}
+
+message ClassifyFrequencyResponse {
+  bool    is_gsm        = 1;
+  optional float snr   = 3;
+  SignalStatus signal_status = 4;
+}
+
+// ─────────── AnalyzeCell ───────────
+
+message AnalyzeCellRequest {
+  uint64 target_freq_hz = 1;
+  float  gain = 2;
+  int32  ppm = 3;
+  uint32 capture_ms = 4;  // capture duration (ms), replaces speed
+  string device_id = 8;
+}
+
+message AnalyzeCellResponse {
+  bool   is_gsm = 1;
+  int32  cid    = 2;
+  int32  lac    = 3;
+  int32  mcc    = 4;
+  int32  mnc    = 5;
+  int32  pwr    = 6;
+  string operator = 7;
+  bool   grgsm_available = 8;
+  SignalStatus signal_status = 9;
+  repeated double tch_channels = 20;
+  repeated double neighbours = 21;
+}
+
+// ─────────── ScanBand ───────────
+
+message ScanBandRequest {
+  GSMBand band = 1;
+  float   gain = 2;
+  int32   ppm = 3;
+  uint32  pass2_capture_ms = 4;  // pass 2 capture duration (ms), replaces speed
+  string  device_id = 6;
+  float   fcch_threshold = 7;
+  float   snr_threshold = 8;
+  int32   pass1_capture_ms = 9;
+  int32   sample_rate_hz = 10;
+}
+
+message ScanBandResponse {
+  string band_name = 1;
+  int32  cells_found = 2;
+  bool   grgsm_available = 3;
+  string error = 4;
+  repeated CellInfo cells = 5;
+}
+
+// ─────────── ScanActivity ───────────
+
+message ScanActivityRequest {
+  GSMBand band = 1;
+  float   gain = 2;
+  string  device_id = 5;
+  Speed   speed = 6;            // capture speed (same as ScanBand speed enum)
+  int32   ppm = 7;              // ppm correction (default 0)
+  repeated int32 target_arfcns = 8;  // optional: if empty, scan all ARFCNs in band
+}
+
+message ScanActivityResponse {
+  string band_name = 1;
+  int32  total_arfcns_scanned = 2;
+  int32  tch_active = 4;
+  double scan_duration_s = 5;
+  repeated ActivityCell cells = 6;
+  NoActivityArfcnGroup no_activity_arfcns = 7;
+}
+
+message NoActivityArfcnGroup {
+  repeated uint64 freq_hz = 2;
+  int32 count = 3;
+}
+
+message ActivityCell {
+  int32  arfcn = 1;
+  uint64 freq_hz = 2;
+  float  power_dbfs = 5;
+  string activity_type = 6;   // "NO_ACTIVITY" | "TCH_IDLE" | "TCH_ACTIVE_CALL"
+  string description = 7;
+}
+
+// ─────────── CalibratePPM ───────────
+
+message CalibratePPMRequest {
+  string device_id = 1;
+}
+
+message CalibratePPMResponse {
+  int32  smart_ppm = 1;     // PPM value (rounded to int, for use in ScanBand)
+  float  ppm_float = 2;     // exact ppm (for diagnostics)
+  int32  best_arfcn = 3;    // ARFCN used for calibration
+  string status = 4;        // "calibrated" | "failed"
+}
+
+// ─────────── Shared messages ───────────
+
+message CellInfo {
+  int32  arfcn = 1;
+  double freq_hz = 2;
+  int32  cid = 3;
+  int32  lac = 4;
+  int32  mcc = 5;
+  int32  mnc = 6;
+  int32  pwr = 7;
+  string operator = 8;
+  reserved 9, 10;               // was tch_arfcns, tch_freqs_hz
+  float  snr = 11;
+  repeated double tch_channels = 12;
+  repeated double neighbours = 13;
+}

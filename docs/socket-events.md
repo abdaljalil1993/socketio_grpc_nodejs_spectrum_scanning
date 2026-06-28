@@ -82,6 +82,41 @@
       "responseStream": false
     },
     {
+      "serviceName": "GSMClassifier",
+      "methodName": "ClassifyFrequency",
+      "requestEvent": "grpc:invoke:GSMClassifier.ClassifyFrequency",
+      "responseEvent": "GSMClassifier.ClassifyFrequency",
+      "responseStream": false
+    },
+    {
+      "serviceName": "GSMClassifier",
+      "methodName": "AnalyzeCell",
+      "requestEvent": "grpc:invoke:GSMClassifier.AnalyzeCell",
+      "responseEvent": "GSMClassifier.AnalyzeCell",
+      "responseStream": false
+    },
+    {
+      "serviceName": "GSMClassifier",
+      "methodName": "ScanBand",
+      "requestEvent": "grpc:invoke:GSMClassifier.ScanBand",
+      "responseEvent": "GSMClassifier.ScanBand",
+      "responseStream": false
+    },
+    {
+      "serviceName": "GSMClassifier",
+      "methodName": "ScanActivity",
+      "requestEvent": "grpc:invoke:GSMClassifier.ScanActivity",
+      "responseEvent": "GSMClassifier.ScanActivity",
+      "responseStream": false
+    },
+    {
+      "serviceName": "GSMClassifier",
+      "methodName": "CalibratePPM",
+      "requestEvent": "grpc:invoke:GSMClassifier.CalibratePPM",
+      "responseEvent": "GSMClassifier.CalibratePPM",
+      "responseStream": false
+    },
+    {
       "serviceName": "SignalRecorder",
       "methodName": "StartRecording",
       "requestEvent": "grpc:invoke:SignalRecorder.StartRecording",
@@ -146,11 +181,13 @@
 14. الباك يستدعي `DMRClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `DMRClassifier.ClassifyFrequency`.
 15. عندما يريد الفرونت التحقق هل تردد معين يحمل TETRA أم لا، يرسل `grpc:invoke:TETRAClassifier.ClassifyFrequency`.
 16. الباك يستدعي `TETRAClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `TETRAClassifier.ClassifyFrequency`.
-17. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
-18. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
-19. الباك يطلب الستريم الموافق من gRPC.
-20. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
-21. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
+17. عندما يريد الفرونت الكشف عن إشارات GSM، يرسل أحد أحداث `GSMClassifier` مثل `grpc:invoke:GSMClassifier.ClassifyFrequency` أو `grpc:invoke:GSMClassifier.AnalyzeCell` أو `grpc:invoke:GSMClassifier.ScanBand` أو `grpc:invoke:GSMClassifier.ScanActivity` أو `grpc:invoke:GSMClassifier.CalibratePPM`.
+18. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `GSMClassifier.ScanBand`.
+19. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
+20. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
+21. الباك يطلب الستريم الموافق من gRPC.
+22. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
+23. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
 
 ## 2.2) أقل سيناريو مطلوب ليبدأ النظام بالعمل
 
@@ -234,6 +271,40 @@ Backend   -> grpc:result -> Frontend
 Backend   -> TETRAClassifier.ClassifyFrequency -> Frontend
 ```
 
+### فحص/تحليل إشارات GSM
+
+```text
+Frontend  -> grpc:invoke:GSMClassifier.ClassifyFrequency -> Backend
+Backend   -> GSMClassifier.ClassifyFrequency (gRPC) -> gRPC server
+gRPC      -> ClassifyFrequencyResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> GSMClassifier.ClassifyFrequency -> Frontend
+
+Frontend  -> grpc:invoke:GSMClassifier.AnalyzeCell -> Backend
+Backend   -> GSMClassifier.AnalyzeCell (gRPC) -> gRPC server
+gRPC      -> AnalyzeCellResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> GSMClassifier.AnalyzeCell -> Frontend
+
+Frontend  -> grpc:invoke:GSMClassifier.ScanBand -> Backend
+Backend   -> GSMClassifier.ScanBand (gRPC) -> gRPC server
+gRPC      -> ScanBandResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> GSMClassifier.ScanBand -> Frontend
+
+Frontend  -> grpc:invoke:GSMClassifier.ScanActivity -> Backend
+Backend   -> GSMClassifier.ScanActivity (gRPC) -> gRPC server
+gRPC      -> ScanActivityResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> GSMClassifier.ScanActivity -> Frontend
+
+Frontend  -> grpc:invoke:GSMClassifier.CalibratePPM -> Backend
+Backend   -> GSMClassifier.CalibratePPM (gRPC) -> gRPC server
+gRPC      -> CalibratePPMResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> GSMClassifier.CalibratePPM -> Frontend
+```
+
 ### بدء ومتابعة تسجيل إشارة
 
 ```text
@@ -296,6 +367,11 @@ Backend   -> DroneIDService.GetAntSDRStatus -> Frontend
 - `DroneIDService.StreamDrones`
 - `DroneIDService.GetStatus`
 - `DroneIDService.GetAntSDRStatus`
+- `GSMClassifier.ClassifyFrequency`
+- `GSMClassifier.AnalyzeCell`
+- `GSMClassifier.ScanBand`
+- `GSMClassifier.ScanActivity`
+- `GSMClassifier.CalibratePPM`
 - `TETRAClassifier.ClassifyFrequency`
 - `SignalRecorder.StartRecording`
 - `SignalRecorder.StopRecording`
@@ -605,6 +681,103 @@ Response payload:
 ```
 
 قد يتأخر هذا الاستدعاء عدة ثوانٍ لأن الخدمة تنتظر التقاط وتحليل الإطارات قبل الرد، لذلك تم رفع المهلة الخاصة به في الباك.
+
+### GSMClassifier Events
+
+جميع methods في `GSMClassifier` هي `unary` (ليست stream) وتعيد نتيجتها على:
+
+- `grpc:result`
+- event العمل نفسه
+
+الأحداث التي يرسلها الفرونت:
+
+- `grpc:invoke:GSMClassifier.ClassifyFrequency`
+- `grpc:invoke:GSMClassifier.AnalyzeCell`
+- `grpc:invoke:GSMClassifier.ScanBand`
+- `grpc:invoke:GSMClassifier.ScanActivity`
+- `grpc:invoke:GSMClassifier.CalibratePPM`
+
+الأحداث التي يجب الاستماع لها في الفرونت:
+
+- `GSMClassifier.ClassifyFrequency`
+- `GSMClassifier.AnalyzeCell`
+- `GSMClassifier.ScanBand`
+- `GSMClassifier.ScanActivity`
+- `GSMClassifier.CalibratePPM`
+
+أمثلة payload موسعة لكل حدث (أفضل شكل للإرسال):
+
+#### `grpc:invoke:GSMClassifier.ClassifyFrequency`
+
+```json
+{
+  "targetFreqHz": "947600000",
+  "captureMs": 1500,
+  "deviceId": "rtlsdr:0",
+  "bandHint": "GSM_BAND_900",
+  "gain": 24
+}
+```
+
+#### `grpc:invoke:GSMClassifier.AnalyzeCell`
+
+```json
+{
+  "targetFreqHz": "947600000",
+  "gain": 24,
+  "ppm": 0,
+  "captureMs": 3000,
+  "deviceId": "rtlsdr:0"
+}
+```
+
+#### `grpc:invoke:GSMClassifier.ScanBand`
+
+```json
+{
+  "band": "GSM_BAND_900",
+  "gain": 24,
+  "ppm": 0,
+  "pass2CaptureMs": 2000,
+  "deviceId": "rtlsdr:0",
+  "fcchThreshold": 6.5,
+  "snrThreshold": 3.0,
+  "pass1CaptureMs": 800,
+  "sampleRateHz": 2000000
+}
+```
+
+#### `grpc:invoke:GSMClassifier.ScanActivity`
+
+```json
+{
+  "band": "GSM_BAND_900",
+  "gain": 24,
+  "deviceId": "rtlsdr:0",
+  "speed": "SPEED_NORMAL",
+  "ppm": 0,
+  "targetArfcns": [1, 20, 62]
+}
+```
+
+#### `grpc:invoke:GSMClassifier.CalibratePPM`
+
+```json
+{
+  "deviceId": "rtlsdr:0"
+}
+```
+
+إذا أردت تتبّع كل طلب بـ `requestId` استخدم نفس الـ payload السابق داخل هذا الغلاف:
+
+```json
+{
+  "payload": {
+    "deviceId": "rtlsdr:0"
+  },
+  "requestId": "gsm-req-001"
+}
+```
 
 ### SignalRecorder Events
 

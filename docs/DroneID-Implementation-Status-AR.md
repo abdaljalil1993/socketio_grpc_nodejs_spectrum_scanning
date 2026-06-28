@@ -5,7 +5,7 @@
 | المكون | الحالة | التفاصيل |
 |-------|--------|----------|
 | **Proto File** | ✅ تم | `src/proto/droneid_service.proto` موجود |
-| **Registry** | ✅ تم | 7 services (يتضمن DroneIDService) |
+| **Registry** | ✅ تم | 8 services (يتضمن DroneIDService + GSMClassifier) |
 | **TypeScript** | ✅ تم | npm run typecheck → صفر أخطاء |
 | **Build** | ✅ تم | npm run build → نجح |
 | **gRPC Target** | ✅ تم | `172.20.20.99:5055` في .env |
@@ -20,6 +20,7 @@
 ```
 ✅ .env
    - أضيف: DroneIDService → 172.20.20.99:5055
+   - أضيف: GSMClassifier → 172.20.20.99:50064
 
 ✅ src/proto/droneid_service.proto
    - موجود منذ البداية
@@ -27,6 +28,7 @@
 ✅ src/grpc/registry.ts
    - تم توليده تلقائياً (npm run generate)
    - يتضمن DroneIDService مع 3 methods
+   - يتضمن GSMClassifier مع 5 methods
    
 ✅ src/types/generated/index.ts
    - تم توليده تلقائياً
@@ -41,15 +43,16 @@
 ### 2️⃣ الخدمات المتاحة:
 
 ```javascript
-// 7 خدمات في النظام (من npm run generate):
+// 8 خدمات في النظام (من npm run generate):
 
 1. DeviceControl          → (default target)
 2. IQStream             → (default target)
 3. SpectrumStream       → (default target)
 4. DMRClassifier        → 172.20.20.99:50062
 5. TETRAClassifier      → 172.20.20.99:50063
-6. SignalRecorder       → 172.20.20.99:50065
-7. DroneIDService       → 172.20.20.99:5055  ✨ الجديد
+6. GSMClassifier        → 172.20.20.99:50064  ✨ الجديد
+7. SignalRecorder       → 172.20.20.99:50065
+8. DroneIDService       → 172.20.20.99:5055
 ```
 
 ### 3️⃣ أحداث Socket.IO الجديدة:
@@ -83,7 +86,7 @@ npm run typecheck
 # 2. البناء
 npm run build
 
-# النتيجة المتوقعة: 64 messages, 22 enums, 7 services ✅
+# النتيجة المتوقعة: 77 messages, 26 enums, 8 services ✅
 ```
 
 ### اختبار الاتصال:
@@ -139,6 +142,7 @@ GRPC_TARGET=172.20.20.99:50061
 GRPC_SERVICE_TARGETS={
   "DMRClassifier":"172.20.20.99:50062",
   "TETRAClassifier":"172.20.20.99:50063",
+   "GSMClassifier":"172.20.20.99:50064",
   "SignalRecorder":"172.20.20.99:50065",
   "DroneIDService":"172.20.20.99:5055"
 }
@@ -222,9 +226,10 @@ socket.on('DroneIDService.StreamDrones', (payload) => {
 ```
 Proto File:           1 (droneid_service.proto)
 Protobuf Messages:    64 (من جميع الملفات)
-Protobuf Enums:       22
-Protobuf Services:    7 (يتضمن DroneIDService)
+Protobuf Enums:       26
+Protobuf Services:    8 (يتضمن DroneIDService و GSMClassifier)
 DroneID Methods:      3 (StreamDrones, GetStatus, GetAntSDRStatus)
+GSM Methods:          5 (ClassifyFrequency, AnalyzeCell, ScanBand, ScanActivity, CalibratePPM)
 Socket Events:        3 request + 3 response
 gRPC Target:          172.20.20.99:5055
 Documentation Files:  6 (كاملة بالعربية)

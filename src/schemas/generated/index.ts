@@ -13,6 +13,18 @@ export const DroneidV1ConnectionTypeSchema = z.enum(DroneidV1ConnectionTypeValue
 export const DroneidV1ProtocolValues = ['PROTOCOL_DJI', 'PROTOCOL_UNIVERSAL_RID'] as const;
 export const DroneidV1ProtocolSchema = z.enum(DroneidV1ProtocolValues);
 
+export const GsmClassifierV1GSMBandValues = ['GSM_BAND_UNSPECIFIED', 'GSM_BAND_850', 'GSM_BAND_900', 'GSM_BAND_1800', 'GSM_BAND_1900'] as const;
+export const GsmClassifierV1GSMBandSchema = z.enum(GsmClassifierV1GSMBandValues);
+
+export const GsmClassifierV1SignalStatusValues = ['SIGNAL_STATUS_UNSPECIFIED', 'NO_FCCH', 'FCCH_ONLY', 'FCCH_WEAK_SCH', 'GSM_CONFIRMED', 'TCH'] as const;
+export const GsmClassifierV1SignalStatusSchema = z.enum(GsmClassifierV1SignalStatusValues);
+
+export const GsmClassifierV1SpeedValues = ['SPEED_UNSPECIFIED', 'SPEED_FAST', 'SPEED_NORMAL', 'SPEED_DEEP'] as const;
+export const GsmClassifierV1SpeedSchema = z.enum(GsmClassifierV1SpeedValues);
+
+export const GsmClassifierV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_GSM', 'VERDICT_NOT_GSM', 'VERDICT_INCONCLUSIVE'] as const;
+export const GsmClassifierV1VerdictSchema = z.enum(GsmClassifierV1VerdictValues);
+
 export const SdrIngestionV2CaptureModeValues = ['CAPTURE_MODE_UNSPECIFIED', 'CAPTURE_MODE_NONE', 'CAPTURE_MODE_IQS', 'CAPTURE_MODE_RTA_SPECTRUM', 'CAPTURE_MODE_RTA_WATERFALL', 'CAPTURE_MODE_SWP_SWEEP', 'CAPTURE_MODE_DET'] as const;
 export const SdrIngestionV2CaptureModeSchema = z.enum(SdrIngestionV2CaptureModeValues);
 
@@ -220,6 +232,144 @@ export const DroneidV1StreamRequestSchema = z.lazy(() =>
     zmqEndpoint: z.string().optional(),
     serialPort: z.string().optional(),
     baudRate: z.number().int().optional(),
+  }),
+);
+
+export const GsmClassifierV1ActivityCellSchema = z.lazy(() =>
+  z.object({
+    arfcn: z.number().int().optional(),
+    freqHz: z.string().optional(),
+    powerDbfs: z.number().optional(),
+    activityType: z.string().optional(),
+    description: z.string().optional(),
+  }),
+);
+
+export const GsmClassifierV1AnalyzeCellRequestSchema = z.lazy(() =>
+  z.object({
+    targetFreqHz: z.string().optional(),
+    gain: z.number().optional(),
+    ppm: z.number().int().optional(),
+    captureMs: z.number().int().optional(),
+    deviceId: z.string().optional(),
+  }),
+);
+
+export const GsmClassifierV1AnalyzeCellResponseSchema = z.lazy(() =>
+  z.object({
+    isGsm: z.boolean().optional(),
+    cid: z.number().int().optional(),
+    lac: z.number().int().optional(),
+    mcc: z.number().int().optional(),
+    mnc: z.number().int().optional(),
+    pwr: z.number().int().optional(),
+    operator: z.string().optional(),
+    grgsmAvailable: z.boolean().optional(),
+    signalStatus: GsmClassifierV1SignalStatusSchema.optional(),
+    tchChannels: z.array(z.number()).default([]),
+    neighbours: z.array(z.number()).default([]),
+  }),
+);
+
+export const GsmClassifierV1CalibratePPMRequestSchema = z.lazy(() =>
+  z.object({
+    deviceId: z.string().optional(),
+  }),
+);
+
+export const GsmClassifierV1CalibratePPMResponseSchema = z.lazy(() =>
+  z.object({
+    smartPpm: z.number().int().optional(),
+    ppmFloat: z.number().optional(),
+    bestArfcn: z.number().int().optional(),
+    status: z.string().optional(),
+  }),
+);
+
+export const GsmClassifierV1CellInfoSchema = z.lazy(() =>
+  z.object({
+    arfcn: z.number().int().optional(),
+    freqHz: z.number().optional(),
+    cid: z.number().int().optional(),
+    lac: z.number().int().optional(),
+    mcc: z.number().int().optional(),
+    mnc: z.number().int().optional(),
+    pwr: z.number().int().optional(),
+    operator: z.string().optional(),
+    snr: z.number().optional(),
+    tchChannels: z.array(z.number()).default([]),
+    neighbours: z.array(z.number()).default([]),
+  }),
+);
+
+export const GsmClassifierV1ClassifyFrequencyRequestSchema = z.lazy(() =>
+  z.object({
+    targetFreqHz: z.string().optional(),
+    captureMs: z.number().int().optional(),
+    deviceId: z.string().optional(),
+    bandHint: GsmClassifierV1GSMBandSchema.optional(),
+    gain: z.number().optional(),
+  }),
+);
+
+export const GsmClassifierV1ClassifyFrequencyResponseSchema = z.lazy(() =>
+  z.object({
+    isGsm: z.boolean().optional(),
+    snr: z.number().optional(),
+    signalStatus: GsmClassifierV1SignalStatusSchema.optional(),
+  }),
+);
+
+export const GsmClassifierV1NoActivityArfcnGroupSchema = z.lazy(() =>
+  z.object({
+    freqHz: z.array(z.string()).default([]),
+    count: z.number().int().optional(),
+  }),
+);
+
+export const GsmClassifierV1ScanActivityRequestSchema = z.lazy(() =>
+  z.object({
+    band: GsmClassifierV1GSMBandSchema.optional(),
+    gain: z.number().optional(),
+    deviceId: z.string().optional(),
+    speed: GsmClassifierV1SpeedSchema.optional(),
+    ppm: z.number().int().optional(),
+    targetArfcns: z.array(z.number().int()).default([]),
+  }),
+);
+
+export const GsmClassifierV1ScanActivityResponseSchema = z.lazy(() =>
+  z.object({
+    bandName: z.string().optional(),
+    totalArfcnsScanned: z.number().int().optional(),
+    tchActive: z.number().int().optional(),
+    scanDurationS: z.number().optional(),
+    cells: z.array(GsmClassifierV1ActivityCellSchema).default([]),
+    noActivityArfcns: GsmClassifierV1NoActivityArfcnGroupSchema.optional(),
+  }),
+);
+
+export const GsmClassifierV1ScanBandRequestSchema = z.lazy(() =>
+  z.object({
+    band: GsmClassifierV1GSMBandSchema.optional(),
+    gain: z.number().optional(),
+    ppm: z.number().int().optional(),
+    pass2CaptureMs: z.number().int().optional(),
+    deviceId: z.string().optional(),
+    fcchThreshold: z.number().optional(),
+    snrThreshold: z.number().optional(),
+    pass1CaptureMs: z.number().int().optional(),
+    sampleRateHz: z.number().int().optional(),
+  }),
+);
+
+export const GsmClassifierV1ScanBandResponseSchema = z.lazy(() =>
+  z.object({
+    bandName: z.string().optional(),
+    cellsFound: z.number().int().optional(),
+    grgsmAvailable: z.boolean().optional(),
+    error: z.string().optional(),
+    cells: z.array(GsmClassifierV1CellInfoSchema).default([]),
   }),
 );
 
@@ -749,6 +899,19 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'droneid.v1.ServiceStatus': DroneidV1ServiceStatusSchema,
   'droneid.v1.StatusRequest': DroneidV1StatusRequestSchema,
   'droneid.v1.StreamRequest': DroneidV1StreamRequestSchema,
+  'gsm_classifier.v1.ActivityCell': GsmClassifierV1ActivityCellSchema,
+  'gsm_classifier.v1.AnalyzeCellRequest': GsmClassifierV1AnalyzeCellRequestSchema,
+  'gsm_classifier.v1.AnalyzeCellResponse': GsmClassifierV1AnalyzeCellResponseSchema,
+  'gsm_classifier.v1.CalibratePPMRequest': GsmClassifierV1CalibratePPMRequestSchema,
+  'gsm_classifier.v1.CalibratePPMResponse': GsmClassifierV1CalibratePPMResponseSchema,
+  'gsm_classifier.v1.CellInfo': GsmClassifierV1CellInfoSchema,
+  'gsm_classifier.v1.ClassifyFrequencyRequest': GsmClassifierV1ClassifyFrequencyRequestSchema,
+  'gsm_classifier.v1.ClassifyFrequencyResponse': GsmClassifierV1ClassifyFrequencyResponseSchema,
+  'gsm_classifier.v1.NoActivityArfcnGroup': GsmClassifierV1NoActivityArfcnGroupSchema,
+  'gsm_classifier.v1.ScanActivityRequest': GsmClassifierV1ScanActivityRequestSchema,
+  'gsm_classifier.v1.ScanActivityResponse': GsmClassifierV1ScanActivityResponseSchema,
+  'gsm_classifier.v1.ScanBandRequest': GsmClassifierV1ScanBandRequestSchema,
+  'gsm_classifier.v1.ScanBandResponse': GsmClassifierV1ScanBandResponseSchema,
   'sdr_ingestion.v2.CloseDeviceRequest': SdrIngestionV2CloseDeviceRequestSchema,
   'sdr_ingestion.v2.CloseDeviceResponse': SdrIngestionV2CloseDeviceResponseSchema,
   'sdr_ingestion.v2.DeviceDescriptor': SdrIngestionV2DeviceDescriptorSchema,
