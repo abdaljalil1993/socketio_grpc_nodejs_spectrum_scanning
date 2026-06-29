@@ -26,6 +26,73 @@ export interface GatewayClients {
 
 const lowerFirst = (value: string): string => `${value.charAt(0).toLowerCase()}${value.slice(1)}`;
 
+const normalizeRpcMethodName = (value: string): string => value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+const collectClientMethodNames = (client: grpc.Client): Set<string> => {
+  const methodNames = new Set<string>();
+  let currentPrototype: object | null = Object.getPrototypeOf(client);
+
+  while (currentPrototype && currentPrototype !== Object.prototype) {
+    for (const key of Object.getOwnPropertyNames(currentPrototype)) {
+      if (key === 'constructor') {
+        continue;
+      }
+
+      if (typeof (client as unknown as Record<string, unknown>)[key] === 'function') {
+        methodNames.add(key);
+      }
+    }
+
+    currentPrototype = Object.getPrototypeOf(currentPrototype);
+  }
+
+  return methodNames;
+};
+
+const resolveClientMethodName = (
+  client: grpc.Client,
+  methodName: string,
+  logger: Logger,
+  serviceName: string,
+): string => {
+  const clientMethodNames = collectClientMethodNames(client);
+  const directCandidates = [lowerFirst(methodName), methodName];
+
+  for (const candidate of directCandidates) {
+    if (clientMethodNames.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  const normalizedMethodName = normalizeRpcMethodName(methodName);
+  const normalizedMatch = [...clientMethodNames].find(
+    (candidate) => normalizeRpcMethodName(candidate) === normalizedMethodName,
+  );
+
+  if (normalizedMatch) {
+    logger.warn(
+      { serviceName, methodName, resolvedClientMethodName: normalizedMatch },
+      'Resolved gRPC client method name using normalized match',
+    );
+
+    return normalizedMatch;
+  }
+
+  const fallback = lowerFirst(methodName);
+
+  logger.warn(
+    {
+      serviceName,
+      methodName,
+      fallback,
+      availableClientMethods: [...clientMethodNames].sort()
+    },
+    'Unable to resolve gRPC client method name exactly; using fallback',
+  );
+
+  return fallback;
+};
+
 const resolveServiceConstructor = (
   grpcObject: grpc.GrpcObject,
   service: ProtoServiceRegistry,
@@ -84,7 +151,7 @@ export const createGrpcClients = (
       methods: new Map(
         serviceDefinition.methods.map((method) => [method.methodName.toLowerCase(), {
           definition: method,
-          clientMethodName: lowerFirst(method.methodName)
+          clientMethodName: resolveClientMethodName(client, method.methodName, logger, serviceDefinition.serviceName)
         }]),
       )
     };

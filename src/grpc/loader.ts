@@ -40,7 +40,7 @@ export const loadGrpcObject = (protoFiles: string[], protoDirectory: string): gr
     longs: String,
     bytes: String,
     enums: String,
-    defaults: false,
+    defaults: true,
     arrays: true,
     objects: true,
     oneofs: true,

@@ -61,11 +61,28 @@ const isServerStreamMethod = (method: GatewayMethodClient): boolean =>
 const isUnaryMethod = (method: GatewayMethodClient): boolean =>
   !method.definition.responseStream && !method.definition.requestStream;
 
+const methodTimeoutDefaults: Record<string, number> = {
+  'GSMClassifier.AnalyzeCell': 45_000,
+  'GSMClassifier.ScanBand': 120_000,
+  'GSMClassifier.ScanActivity': 120_000,
+  'GSMClassifier.CalibratePPM': 120_000,
+  'gsm_classifier.v1.GSMClassifier.AnalyzeCell': 45_000,
+  'gsm_classifier.v1.GSMClassifier.ScanBand': 120_000,
+  'gsm_classifier.v1.GSMClassifier.ScanActivity': 120_000,
+  'gsm_classifier.v1.GSMClassifier.CalibratePPM': 120_000
+};
+
 const resolveRequestTimeoutMs = (serviceName: string, fullServiceName: string, methodName: string): number => {
   const scopedKey = `${serviceName}.${methodName}`;
   const fullScopedKey = `${fullServiceName}.${methodName}`;
 
-  return env.grpcMethodTimeouts[scopedKey] ?? env.grpcMethodTimeouts[fullScopedKey] ?? env.GRPC_REQUEST_TIMEOUT_MS;
+  return (
+    env.grpcMethodTimeouts[scopedKey] ??
+    env.grpcMethodTimeouts[fullScopedKey] ??
+    methodTimeoutDefaults[scopedKey] ??
+    methodTimeoutDefaults[fullScopedKey] ??
+    env.GRPC_REQUEST_TIMEOUT_MS
+  );
 };
 
 const getGrpcErrorStatusCode = (error: ServiceError): number => {
@@ -104,7 +121,7 @@ const collectDroppedKeys = (input: unknown, parsed: unknown, prefix = ''): strin
   return droppedKeys;
 };
 
-const validateWithSchema = (typeName: string, payload: unknown, logger: Logger) => {
+const validateRequestWithSchema = (typeName: string, payload: unknown, logger: Logger) => {
   const schema = schemaRegistry[typeName];
 
   if (!schema) {
@@ -127,6 +144,27 @@ const validateWithSchema = (typeName: string, payload: unknown, logger: Logger) 
   }
 
   return result.data;
+};
+
+const validateResponseWithSchema = (typeName: string, payload: unknown, logger: Logger): unknown => {
+  const schema = schemaRegistry[typeName];
+
+  if (!schema) {
+    logger.warn({ typeName }, 'Schema not found, skipping response validation');
+    return payload;
+  }
+
+  const result = schema.safeParse(payload);
+
+  if (!result.success) {
+    logger.warn(
+      { typeName, issues: result.error.flatten() },
+      'Response schema validation failed, emitting raw payload to preserve data',
+    );
+  }
+
+  // Preserve the original gRPC payload shape when relaying over socket events.
+  return payload;
 };
 
 export interface GrpcGateway {
@@ -271,7 +309,7 @@ export const createGrpcGateway = ({
 
     try {
       const normalizedPayload = normalizeResponsePayload(payload, method.definition.responseType);
-      const validatedPayload = validateWithSchema(method.definition.responseType, normalizedPayload, logger);
+      const validatedPayload = validateResponseWithSchema(method.definition.responseType, normalizedPayload, logger);
 
       if (delivery.broadcast) {
         emitter.emit(method.definition.eventName, validatedPayload);
@@ -298,7 +336,7 @@ export const createGrpcGateway = ({
     source: StreamSource,
     targetRoom?: string,
   ) => {
-    const parsedPayload = validateWithSchema(method.definition.requestType, payload, logger);
+    const parsedPayload = validateRequestWithSchema(method.definition.requestType, payload, logger);
     const streamKey = `${service.definition.fullServiceName}.${method.definition.methodName}:${stableStringify(parsedPayload)}`;
 
     const existingStream = activeStreams.get(streamKey);
@@ -421,7 +459,7 @@ export const createGrpcGateway = ({
       const { service, method } = resolveMethod(serviceName, methodName);
 
       if (isUnaryMethod(method)) {
-        const parsedPayload = validateWithSchema(method.definition.requestType, payload, logger);
+        const parsedPayload = validateRequestWithSchema(method.definition.requestType, payload, logger);
         const timeoutMs = resolveRequestTimeoutMs(
           service.definition.serviceName,
           service.definition.fullServiceName,
