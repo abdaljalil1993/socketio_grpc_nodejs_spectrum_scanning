@@ -10,6 +10,8 @@ import type { GatewayClients, GatewayMethodClient, GatewayServiceClient } from '
 
 type StreamSource = 'startup' | 'api';
 
+const SOCKET_ERROR_EVENT = 'grpc:error';
+
 interface ActiveStream {
   streamKey: string;
   serviceName: string;
@@ -329,6 +331,30 @@ export const createGrpcGateway = ({
     }
   };
 
+  const emitStreamError = (
+    service: GatewayServiceClient,
+    method: GatewayMethodClient,
+    error: ServiceError,
+    delivery: StreamDeliveryState,
+  ): void => {
+    const payload = {
+      triggerEvent: `grpc:invoke:${service.definition.serviceName}.${method.definition.methodName}`,
+      service: service.definition.serviceName,
+      method: method.definition.methodName,
+      statusCode: getGrpcErrorStatusCode(error),
+      message: error.details || error.message || 'Unknown gRPC stream error',
+      serviceTarget: service.target
+    };
+
+    if (delivery.broadcast) {
+      emitter.emit(SOCKET_ERROR_EVENT, payload);
+    }
+
+    for (const room of delivery.targetRooms) {
+      emitter.emit(SOCKET_ERROR_EVENT, payload, { room });
+    }
+  };
+
   const startServerStream = (
     service: GatewayServiceClient,
     method: GatewayMethodClient,
@@ -388,6 +414,12 @@ export const createGrpcGateway = ({
     });
 
     call.on('error', (error: ServiceError) => {
+      const currentStream = activeStreams.get(streamKey);
+
+      if (currentStream) {
+        emitStreamError(service, method, error, currentStream.delivery);
+      }
+
       activeStreams.delete(streamKey);
       logger.error({ streamKey, error }, 'gRPC stream error');
     });

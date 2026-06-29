@@ -184,7 +184,14 @@ export const createGrpcClients = (
                 if (error) {
                   failedServices += 1;
                   scopedLogger.error(
-                    { serviceName: service.definition.fullServiceName, target: service.target, error },
+                    {
+                      serviceName: service.definition.fullServiceName,
+                      target: service.target,
+                      err: error,
+                      errorMessage: error.message,
+                      errorCode: (error as NodeJS.ErrnoException).code,
+                      errorName: error.name
+                    },
                     'gRPC client failed readiness check',
                   );
                   resolve();
