@@ -231,64 +231,58 @@ export const createGrpcGateway = ({
       return payload;
     }
 
-    const unwrapPayload = (value: unknown): unknown => {
-      if (Buffer.isBuffer(value)) {
-        return { data: value.toString('base64') };
-      }
-
-      if (value instanceof Uint8Array) {
-        return { data: Buffer.from(value).toString('base64') };
-      }
-
-      if (typeof value === 'string') {
-        return { data: value };
-      }
-
-      if (Array.isArray(value)) {
-        return value.map(unwrapPayload);
-      }
-
-      if (!value || typeof value !== 'object') {
-        return value;
-      }
-
-      const anyValue = value as any;
-      if ('payload' in anyValue && anyValue.payload != null && anyValue.payload !== anyValue) {
-        return unwrapPayload(anyValue.payload);
-      }
-
-      const copy: Record<string, unknown> = {};
-      for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-        if (key === 'payload') {
-          continue;
-        }
-
-        copy[key] = unwrapPayload(nestedValue);
-      }
-
-      return copy;
-    };
-
+    // DownloadRecordingChunk uses `oneof payload { DownloadMetadata metadata = 1; bytes data = 2; }`
+    // proto-loader with bytes:'String' decodes bytes fields as base64 strings.
+    // With defaults:true both fields exist on every message, so we check which
+    // arm of the oneof is actually set (non-empty) and return only that arm.
     try {
-      const normalized = unwrapPayload(payload);
-
-      if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
-        const copy = { ...(normalized as Record<string, unknown>) };
-
-        if (copy.data != null) {
-          const value = copy.data as unknown;
-
-          if (Buffer.isBuffer(value)) {
-            copy.data = value.toString('base64');
-          } else if (value instanceof Uint8Array) {
-            copy.data = Buffer.from(value).toString('base64');
-          }
-        }
-
-        return copy;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return payload;
       }
 
-      return normalized;
+      const chunk = payload as Record<string, unknown>;
+
+      // Unwrap the outer `payload` wrapper if proto-loader wrapped the oneof
+      const inner: Record<string, unknown> =
+        'payload' in chunk && chunk.payload && typeof chunk.payload === 'object'
+          ? (chunk.payload as Record<string, unknown>)
+          : chunk;
+
+      const rawData = inner['data'];
+      const rawMetadata = inner['metadata'];
+
+      // Determine active oneof arm:
+      // - `data` arm is active when rawData is a non-empty string or Buffer/Uint8Array
+      // - `metadata` arm is active when rawMetadata is a non-null object
+      const dataIsActive =
+        (typeof rawData === 'string' && rawData.length > 0) ||
+        Buffer.isBuffer(rawData) ||
+        rawData instanceof Uint8Array;
+
+      const metadataIsActive =
+        rawMetadata != null && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata);
+
+      if (dataIsActive) {
+        let base64: string;
+
+        if (Buffer.isBuffer(rawData)) {
+          base64 = rawData.toString('base64');
+        } else if (rawData instanceof Uint8Array) {
+          base64 = Buffer.from(rawData).toString('base64');
+        } else {
+          // already a base64 string from proto-loader bytes:'String'
+          base64 = rawData as string;
+        }
+
+        return { data: base64 };
+      }
+
+      if (metadataIsActive) {
+        return { metadata: rawMetadata };
+      }
+
+      // Fallback: return as-is
+      return payload;
     } catch {
       return payload;
     }
@@ -304,7 +298,11 @@ export const createGrpcGateway = ({
       {
         serviceName: service.definition.serviceName,
         methodName: method.definition.methodName,
-        eventName: method.definition.eventName
+        eventName: method.definition.eventName,
+        ...(method.definition.responseType === 'signal_recorder.v1.DownloadRecordingChunk' && {
+          rawPayloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as object) : typeof payload,
+          rawPayloadSample: JSON.stringify(payload).slice(0, 200)
+        })
       },
       'Incoming message',
     );
