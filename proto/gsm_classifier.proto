@@ -20,10 +20,6 @@ service GSMClassifier {
   // No deep decode — fast power + FCCH detection only.
   rpc ScanActivity (ScanActivityRequest) returns (ScanActivityResponse);
 
-  // PPM calibration. Scans GSM900 FCCH, selects strongest ARFCN,
-  // computes ppm from FCCH frequency offset via FFT.
-  // Returns smart_ppm for manual use in ScanBand/ClassifyFrequency.
-  rpc CalibratePPM (CalibratePPMRequest) returns (CalibratePPMResponse);
 }
 
 // ─────────── Enums ───────────
@@ -57,6 +53,7 @@ enum Speed {
   SPEED_FAST        = 1;
   SPEED_NORMAL      = 2;
   SPEED_DEEP        = 3;
+  SPEED_SLOW        = 4;
 }
 
 // ─────────── ClassifyFrequency ───────────
@@ -67,12 +64,14 @@ message ClassifyFrequencyRequest {
   string device_id = 3;
   GSMBand band_hint = 4;
   float  gain = 5;
+  int32  ppm = 6;
 }
 
 message ClassifyFrequencyResponse {
   bool    is_gsm        = 1;
   optional float snr   = 3;
   SignalStatus signal_status = 4;
+  string error = 5;
 }
 
 // ─────────── AnalyzeCell ───────────
@@ -95,6 +94,7 @@ message AnalyzeCellResponse {
   string operator = 7;
   bool   grgsm_available = 8;
   SignalStatus signal_status = 9;
+  string error = 10;
   repeated double tch_channels = 20;
   repeated double neighbours = 21;
 }
@@ -107,10 +107,11 @@ message ScanBandRequest {
   int32   ppm = 3;
   uint32  pass2_capture_ms = 4;  // pass 2 capture duration (ms), replaces speed
   string  device_id = 6;
-  float   fcch_threshold = 7;
-  float   snr_threshold = 8;
+  optional float fcch_threshold = 7;
+  optional float snr_threshold = 8;
   int32   pass1_capture_ms = 9;
   int32   sample_rate_hz = 10;
+  optional int32 max_decode_cells = 11;
 }
 
 message ScanBandResponse {
@@ -139,6 +140,7 @@ message ScanActivityResponse {
   double scan_duration_s = 5;
   repeated ActivityCell cells = 6;
   NoActivityArfcnGroup no_activity_arfcns = 7;
+  string error = 8;
 }
 
 message NoActivityArfcnGroup {
@@ -152,19 +154,6 @@ message ActivityCell {
   float  power_dbfs = 5;
   string activity_type = 6;   // "NO_ACTIVITY" | "TCH_IDLE" | "TCH_ACTIVE_CALL"
   string description = 7;
-}
-
-// ─────────── CalibratePPM ───────────
-
-message CalibratePPMRequest {
-  string device_id = 1;
-}
-
-message CalibratePPMResponse {
-  int32  smart_ppm = 1;     // PPM value (rounded to int, for use in ScanBand)
-  float  ppm_float = 2;     // exact ppm (for diagnostics)
-  int32  best_arfcn = 3;    // ARFCN used for calibration
-  string status = 4;        // "calibrated" | "failed"
 }
 
 // ─────────── Shared messages ───────────

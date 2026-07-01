@@ -87,7 +87,7 @@ export const protoRegistry = {
         "responseType": "gsm_classifier.v1.ClassifyFrequencyResponse",
         "requestStream": false,
         "responseStream": false,
-        "requestFieldCount": 5,
+        "requestFieldCount": 6,
         "eventName": "GSMClassifier.ClassifyFrequency"
       },
       {
@@ -105,7 +105,7 @@ export const protoRegistry = {
         "responseType": "gsm_classifier.v1.ScanBandResponse",
         "requestStream": false,
         "responseStream": false,
-        "requestFieldCount": 9,
+        "requestFieldCount": 10,
         "eventName": "GSMClassifier.ScanBand"
       },
       {
@@ -116,15 +116,6 @@ export const protoRegistry = {
         "responseStream": false,
         "requestFieldCount": 6,
         "eventName": "GSMClassifier.ScanActivity"
-      },
-      {
-        "methodName": "CalibratePPM",
-        "requestType": "gsm_classifier.v1.CalibratePPMRequest",
-        "responseType": "gsm_classifier.v1.CalibratePPMResponse",
-        "requestStream": false,
-        "responseStream": false,
-        "requestFieldCount": 1,
-        "eventName": "GSMClassifier.CalibratePPM"
       }
     ]
   },
@@ -371,7 +362,6 @@ export const protoRegistry = {
   "GSMClassifier.AnalyzeCell",
   "GSMClassifier.ScanBand",
   "GSMClassifier.ScanActivity",
-  "GSMClassifier.CalibratePPM",
   "DeviceControl.ListDevices",
   "DeviceControl.OpenDevice",
   "DeviceControl.CloseDevice",

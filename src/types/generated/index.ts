@@ -12,7 +12,7 @@ export type GsmClassifierV1GSMBand = 'GSM_BAND_UNSPECIFIED' | 'GSM_BAND_850' | '
 
 export type GsmClassifierV1SignalStatus = 'SIGNAL_STATUS_UNSPECIFIED' | 'NO_FCCH' | 'FCCH_ONLY' | 'FCCH_WEAK_SCH' | 'GSM_CONFIRMED' | 'TCH';
 
-export type GsmClassifierV1Speed = 'SPEED_UNSPECIFIED' | 'SPEED_FAST' | 'SPEED_NORMAL' | 'SPEED_DEEP';
+export type GsmClassifierV1Speed = 'SPEED_UNSPECIFIED' | 'SPEED_FAST' | 'SPEED_NORMAL' | 'SPEED_DEEP' | 'SPEED_SLOW';
 
 export type GsmClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_GSM' | 'VERDICT_NOT_GSM' | 'VERDICT_INCONCLUSIVE';
 
@@ -210,19 +210,9 @@ export interface GsmClassifierV1AnalyzeCellResponse {
   operator?: string;
   grgsmAvailable?: boolean;
   signalStatus?: GsmClassifierV1SignalStatus;
+  error?: string;
   tchChannels: number[];
   neighbours: number[];
-}
-
-export interface GsmClassifierV1CalibratePPMRequest {
-  deviceId?: string;
-}
-
-export interface GsmClassifierV1CalibratePPMResponse {
-  smartPpm?: number;
-  ppmFloat?: number;
-  bestArfcn?: number;
-  status?: string;
 }
 
 export interface GsmClassifierV1CellInfo {
@@ -245,12 +235,14 @@ export interface GsmClassifierV1ClassifyFrequencyRequest {
   deviceId?: string;
   bandHint?: GsmClassifierV1GSMBand;
   gain?: number;
+  ppm?: number;
 }
 
 export interface GsmClassifierV1ClassifyFrequencyResponse {
   isGsm?: boolean;
   snr?: number;
   signalStatus?: GsmClassifierV1SignalStatus;
+  error?: string;
 }
 
 export interface GsmClassifierV1NoActivityArfcnGroup {
@@ -274,6 +266,7 @@ export interface GsmClassifierV1ScanActivityResponse {
   scanDurationS?: number;
   cells: GsmClassifierV1ActivityCell[];
   noActivityArfcns?: GsmClassifierV1NoActivityArfcnGroup;
+  error?: string;
 }
 
 export interface GsmClassifierV1ScanBandRequest {
@@ -286,6 +279,7 @@ export interface GsmClassifierV1ScanBandRequest {
   snrThreshold?: number;
   pass1CaptureMs?: number;
   sampleRateHz?: number;
+  maxDecodeCells?: number;
 }
 
 export interface GsmClassifierV1ScanBandResponse {

@@ -110,13 +110,6 @@
       "responseStream": false
     },
     {
-      "serviceName": "GSMClassifier",
-      "methodName": "CalibratePPM",
-      "requestEvent": "grpc:invoke:GSMClassifier.CalibratePPM",
-      "responseEvent": "GSMClassifier.CalibratePPM",
-      "responseStream": false
-    },
-    {
       "serviceName": "SignalRecorder",
       "methodName": "StartRecording",
       "requestEvent": "grpc:invoke:SignalRecorder.StartRecording",
@@ -181,7 +174,7 @@
 14. الباك يستدعي `DMRClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `DMRClassifier.ClassifyFrequency`.
 15. عندما يريد الفرونت التحقق هل تردد معين يحمل TETRA أم لا، يرسل `grpc:invoke:TETRAClassifier.ClassifyFrequency`.
 16. الباك يستدعي `TETRAClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `TETRAClassifier.ClassifyFrequency`.
-17. عندما يريد الفرونت الكشف عن إشارات GSM، يرسل أحد أحداث `GSMClassifier` مثل `grpc:invoke:GSMClassifier.ClassifyFrequency` أو `grpc:invoke:GSMClassifier.AnalyzeCell` أو `grpc:invoke:GSMClassifier.ScanBand` أو `grpc:invoke:GSMClassifier.ScanActivity` أو `grpc:invoke:GSMClassifier.CalibratePPM`.
+17. عندما يريد الفرونت الكشف عن إشارات GSM، يرسل أحد أحداث `GSMClassifier` مثل `grpc:invoke:GSMClassifier.ClassifyFrequency` أو `grpc:invoke:GSMClassifier.AnalyzeCell` أو `grpc:invoke:GSMClassifier.ScanBand` أو `grpc:invoke:GSMClassifier.ScanActivity`.
 18. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `GSMClassifier.ScanBand`.
 19. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
 20. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
@@ -297,12 +290,6 @@ Backend   -> GSMClassifier.ScanActivity (gRPC) -> gRPC server
 gRPC      -> ScanActivityResponse -> Backend
 Backend   -> grpc:result -> Frontend
 Backend   -> GSMClassifier.ScanActivity -> Frontend
-
-Frontend  -> grpc:invoke:GSMClassifier.CalibratePPM -> Backend
-Backend   -> GSMClassifier.CalibratePPM (gRPC) -> gRPC server
-gRPC      -> CalibratePPMResponse -> Backend
-Backend   -> grpc:result -> Frontend
-Backend   -> GSMClassifier.CalibratePPM -> Frontend
 ```
 
 ### بدء ومتابعة تسجيل إشارة
@@ -371,7 +358,6 @@ Backend   -> DroneIDService.GetAntSDRStatus -> Frontend
 - `GSMClassifier.AnalyzeCell`
 - `GSMClassifier.ScanBand`
 - `GSMClassifier.ScanActivity`
-- `GSMClassifier.CalibratePPM`
 - `TETRAClassifier.ClassifyFrequency`
 - `SignalRecorder.StartRecording`
 - `SignalRecorder.StopRecording`
@@ -695,7 +681,6 @@ Response payload:
 - `grpc:invoke:GSMClassifier.AnalyzeCell`
 - `grpc:invoke:GSMClassifier.ScanBand`
 - `grpc:invoke:GSMClassifier.ScanActivity`
-- `grpc:invoke:GSMClassifier.CalibratePPM`
 
 الأحداث التي يجب الاستماع لها في الفرونت:
 
@@ -703,7 +688,6 @@ Response payload:
 - `GSMClassifier.AnalyzeCell`
 - `GSMClassifier.ScanBand`
 - `GSMClassifier.ScanActivity`
-- `GSMClassifier.CalibratePPM`
 
 أمثلة payload موسعة لكل حدث (أفضل شكل للإرسال):
 
@@ -715,7 +699,8 @@ Response payload:
   "captureMs": 1500,
   "deviceId": "rtlsdr:0",
   "bandHint": "GSM_BAND_900",
-  "gain": 24
+  "gain": 24,
+  "ppm": 2
 }
 ```
 
@@ -743,7 +728,8 @@ Response payload:
   "fcchThreshold": 6.5,
   "snrThreshold": 3.0,
   "pass1CaptureMs": 800,
-  "sampleRateHz": 2000000
+  "sampleRateHz": 2000000,
+  "maxDecodeCells": 20
 }
 ```
 
@@ -757,14 +743,6 @@ Response payload:
   "speed": "SPEED_NORMAL",
   "ppm": 0,
   "targetArfcns": [1, 20, 62]
-}
-```
-
-#### `grpc:invoke:GSMClassifier.CalibratePPM`
-
-```json
-{
-  "deviceId": "rtlsdr:0"
 }
 ```
 
@@ -1949,3 +1927,104 @@ Stream message payload:
 - الاستجابات unary تُعاد فقط للعميل صاحب الطلب.
 - الـ streams التي يشغلها عميل معين تُدفع فقط لهذا العميل أو لمن يشارك نفس الاشتراك الفعلي.
 - فقط الـ startup streams المعرفة في `GRPC_STREAM_SUBSCRIPTIONS` يمكن أن تُبث لجميع العملاء.
+
+
+
+
+
+
+
+
+## 9) تحديث GSM الأخير (موحد)
+
+هذا القسم يضم فقط أحداث GSM التي تغيرت في آخر تحديث.
+
+الأحداث المدعومة بعد التحديث:
+
+- `grpc:invoke:GSMClassifier.ClassifyFrequency`
+- `grpc:invoke:GSMClassifier.AnalyzeCell`
+- `grpc:invoke:GSMClassifier.ScanBand`
+- `grpc:invoke:GSMClassifier.ScanActivity`
+
+> ملاحظة: `grpc:invoke:GSMClassifier.CalibratePPM` لم تعد ضمن proto الحالي.
+
+### شكل الإرسال الموصى به
+
+#### `grpc:invoke:GSMClassifier.ClassifyFrequency`
+
+```json
+{
+  "requestId": "req-1",
+  "payload": {
+    "targetFreqHz": "935200000",
+    "captureMs": 800,
+    "deviceId": "rtlsdr-0001",
+    "bandHint": "GSM_BAND_900",
+    "gain": 35.5,
+    "ppm": 2
+  }
+}
+```
+
+#### `grpc:invoke:GSMClassifier.AnalyzeCell`
+
+```json
+{
+  "requestId": "req-2",
+  "payload": {
+    "targetFreqHz": "947400000",
+    "gain": 38,
+    "ppm": 2,
+    "captureMs": 1500,
+    "deviceId": "rtlsdr-0001"
+  }
+}
+```
+
+#### `grpc:invoke:GSMClassifier.ScanBand`
+
+```json
+{
+  "requestId": "req-3",
+  "payload": {
+    "band": "GSM_BAND_900",
+    "gain": 36,
+    "ppm": 2,
+    "pass2CaptureMs": 1200,
+    "deviceId": "rtlsdr-0001",
+    "fcchThreshold": 6.5,
+    "snrThreshold": 4.0,
+    "pass1CaptureMs": 250,
+    "sampleRateHz": 2000000,
+    "maxDecodeCells": 20
+  }
+}
+```
+
+#### `grpc:invoke:GSMClassifier.ScanActivity`
+
+```json
+{
+  "requestId": "req-4",
+  "payload": {
+    "band": "GSM_BAND_900",
+    "gain": 34,
+    "deviceId": "rtlsdr-0001",
+    "speed": "SPEED_NORMAL",
+    "ppm": 2,
+    "targetArfcns": [1, 5, 30]
+  }
+}
+```
+
+### أحداث الاستجابة المقابلة
+
+- `GSMClassifier.ClassifyFrequency`
+- `GSMClassifier.AnalyzeCell`
+- `GSMClassifier.ScanBand`
+- `GSMClassifier.ScanActivity`
+
+### ملاحظات مهمة للحقول
+
+- الحقول 64-bit مثل `targetFreqHz` ترسل كسلاسل نصية.
+- أسماء الحقول تكون `camelCase`.

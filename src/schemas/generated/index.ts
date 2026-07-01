@@ -19,7 +19,7 @@ export const GsmClassifierV1GSMBandSchema = z.enum(GsmClassifierV1GSMBandValues)
 export const GsmClassifierV1SignalStatusValues = ['SIGNAL_STATUS_UNSPECIFIED', 'NO_FCCH', 'FCCH_ONLY', 'FCCH_WEAK_SCH', 'GSM_CONFIRMED', 'TCH'] as const;
 export const GsmClassifierV1SignalStatusSchema = z.enum(GsmClassifierV1SignalStatusValues);
 
-export const GsmClassifierV1SpeedValues = ['SPEED_UNSPECIFIED', 'SPEED_FAST', 'SPEED_NORMAL', 'SPEED_DEEP'] as const;
+export const GsmClassifierV1SpeedValues = ['SPEED_UNSPECIFIED', 'SPEED_FAST', 'SPEED_NORMAL', 'SPEED_DEEP', 'SPEED_SLOW'] as const;
 export const GsmClassifierV1SpeedSchema = z.enum(GsmClassifierV1SpeedValues);
 
 export const GsmClassifierV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_GSM', 'VERDICT_NOT_GSM', 'VERDICT_INCONCLUSIVE'] as const;
@@ -266,23 +266,9 @@ export const GsmClassifierV1AnalyzeCellResponseSchema = z.lazy(() =>
     operator: z.string().optional(),
     grgsmAvailable: z.boolean().optional(),
     signalStatus: GsmClassifierV1SignalStatusSchema.optional(),
+    error: z.string().optional(),
     tchChannels: z.array(z.number()).default([]),
     neighbours: z.array(z.number()).default([]),
-  }),
-);
-
-export const GsmClassifierV1CalibratePPMRequestSchema = z.lazy(() =>
-  z.object({
-    deviceId: z.string().optional(),
-  }),
-);
-
-export const GsmClassifierV1CalibratePPMResponseSchema = z.lazy(() =>
-  z.object({
-    smartPpm: z.number().int().optional(),
-    ppmFloat: z.number().optional(),
-    bestArfcn: z.number().int().optional(),
-    status: z.string().optional(),
   }),
 );
 
@@ -309,6 +295,7 @@ export const GsmClassifierV1ClassifyFrequencyRequestSchema = z.lazy(() =>
     deviceId: z.string().optional(),
     bandHint: GsmClassifierV1GSMBandSchema.optional(),
     gain: z.number().optional(),
+    ppm: z.number().int().optional(),
   }),
 );
 
@@ -317,6 +304,7 @@ export const GsmClassifierV1ClassifyFrequencyResponseSchema = z.lazy(() =>
     isGsm: z.boolean().optional(),
     snr: z.number().optional(),
     signalStatus: GsmClassifierV1SignalStatusSchema.optional(),
+    error: z.string().optional(),
   }),
 );
 
@@ -346,6 +334,7 @@ export const GsmClassifierV1ScanActivityResponseSchema = z.lazy(() =>
     scanDurationS: z.number().optional(),
     cells: z.array(GsmClassifierV1ActivityCellSchema).default([]),
     noActivityArfcns: GsmClassifierV1NoActivityArfcnGroupSchema.optional(),
+    error: z.string().optional(),
   }),
 );
 
@@ -360,6 +349,7 @@ export const GsmClassifierV1ScanBandRequestSchema = z.lazy(() =>
     snrThreshold: z.number().optional(),
     pass1CaptureMs: z.number().int().optional(),
     sampleRateHz: z.number().int().optional(),
+    maxDecodeCells: z.number().int().optional(),
   }),
 );
 
@@ -902,8 +892,6 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'gsm_classifier.v1.ActivityCell': GsmClassifierV1ActivityCellSchema,
   'gsm_classifier.v1.AnalyzeCellRequest': GsmClassifierV1AnalyzeCellRequestSchema,
   'gsm_classifier.v1.AnalyzeCellResponse': GsmClassifierV1AnalyzeCellResponseSchema,
-  'gsm_classifier.v1.CalibratePPMRequest': GsmClassifierV1CalibratePPMRequestSchema,
-  'gsm_classifier.v1.CalibratePPMResponse': GsmClassifierV1CalibratePPMResponseSchema,
   'gsm_classifier.v1.CellInfo': GsmClassifierV1CellInfoSchema,
   'gsm_classifier.v1.ClassifyFrequencyRequest': GsmClassifierV1ClassifyFrequencyRequestSchema,
   'gsm_classifier.v1.ClassifyFrequencyResponse': GsmClassifierV1ClassifyFrequencyResponseSchema,
