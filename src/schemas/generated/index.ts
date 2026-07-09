@@ -25,6 +25,15 @@ export const GsmClassifierV1SpeedSchema = z.enum(GsmClassifierV1SpeedValues);
 export const GsmClassifierV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_GSM', 'VERDICT_NOT_GSM', 'VERDICT_INCONCLUSIVE'] as const;
 export const GsmClassifierV1VerdictSchema = z.enum(GsmClassifierV1VerdictValues);
 
+export const LteScannerV1DuplexModeValues = ['DUPLEX_MODE_UNSPECIFIED', 'DUPLEX_MODE_FDD', 'DUPLEX_MODE_TDD'] as const;
+export const LteScannerV1DuplexModeSchema = z.enum(LteScannerV1DuplexModeValues);
+
+export const LteScannerV1GainModeValues = ['GAIN_MODE_UNSPECIFIED', 'GAIN_MODE_AUTO', 'GAIN_MODE_MANUAL'] as const;
+export const LteScannerV1GainModeSchema = z.enum(LteScannerV1GainModeValues);
+
+export const LteScannerV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_LTE', 'VERDICT_NOT_LTE', 'VERDICT_INCONCLUSIVE'] as const;
+export const LteScannerV1VerdictSchema = z.enum(LteScannerV1VerdictValues);
+
 export const SdrIngestionV2CaptureModeValues = ['CAPTURE_MODE_UNSPECIFIED', 'CAPTURE_MODE_NONE', 'CAPTURE_MODE_IQS', 'CAPTURE_MODE_RTA_SPECTRUM', 'CAPTURE_MODE_RTA_WATERFALL', 'CAPTURE_MODE_SWP_SWEEP', 'CAPTURE_MODE_DET'] as const;
 export const SdrIngestionV2CaptureModeSchema = z.enum(SdrIngestionV2CaptureModeValues);
 
@@ -363,6 +372,87 @@ export const GsmClassifierV1ScanBandResponseSchema = z.lazy(() =>
   }),
 );
 
+export const LteScannerV1ClassifyFrequencyRequestSchema = z.lazy(() =>
+  z.object({
+    targetFreqHz: z.string().optional(),
+    deviceId: z.string().optional(),
+    gainMode: LteScannerV1GainModeSchema.optional(),
+    gainTenthDb: z.number().int().optional(),
+    ppm: z.number().int().optional(),
+    numTry: z.number().int().optional(),
+    disableTwisted: z.boolean().optional(),
+  }),
+);
+
+export const LteScannerV1ClassifyFrequencyResponseSchema = z.lazy(() =>
+  z.object({
+    verdict: LteScannerV1VerdictSchema.optional(),
+    isLte: z.boolean().optional(),
+    confidence: z.number().optional(),
+    cells: z.array(LteScannerV1DetectedCellSchema).default([]),
+    evidence: LteScannerV1LTEEvidenceSchema.optional(),
+    capturedFreqHz: z.string().optional(),
+    deviceIdUsed: z.string().optional(),
+    gainModeUsed: LteScannerV1GainModeSchema.optional(),
+    gainTenthDbUsed: z.number().int().optional(),
+  }),
+);
+
+export const LteScannerV1DetectedCellSchema = z.lazy(() =>
+  z.object({
+    duplexMode: LteScannerV1DuplexModeSchema.optional(),
+    cellId: z.number().int().optional(),
+    pssId: z.number().int().optional(),
+    antennaPorts: z.number().int().optional(),
+    centerFreqHz: z.string().optional(),
+    freqOffsetHz: z.number().optional(),
+    rxPowerDb: z.number().optional(),
+    cpType: z.string().optional(),
+    nRbDl: z.number().int().optional(),
+    phichDuration: z.string().optional(),
+    phichResource: z.string().optional(),
+    crystalCorrection: z.number().optional(),
+    confirmed: z.boolean().optional(),
+  }),
+);
+
+export const LteScannerV1LTEEvidenceSchema = z.lazy(() =>
+  z.object({
+    pssPeaksFound: z.number().int().optional(),
+    anyPeakConfirmed: z.boolean().optional(),
+    inputLevelAvg: z.number().optional(),
+    inputLevelSaturated: z.boolean().optional(),
+  }),
+);
+
+export const LteScannerV1ScanBandRequestSchema = z.lazy(() =>
+  z.object({
+    freqStartHz: z.string().optional(),
+    freqEndHz: z.string().optional(),
+    freqStepHz: z.string().optional(),
+    deviceId: z.string().optional(),
+    gainMode: LteScannerV1GainModeSchema.optional(),
+    gainTenthDb: z.number().int().optional(),
+    ppm: z.number().int().optional(),
+    numTry: z.number().int().optional(),
+    disableTwisted: z.boolean().optional(),
+  }),
+);
+
+export const LteScannerV1ScanBandResponseSchema = z.lazy(() =>
+  z.object({
+    cells: z.array(LteScannerV1DetectedCellSchema).default([]),
+    scannedStartHz: z.string().optional(),
+    scannedEndHz: z.string().optional(),
+    scannedStepHz: z.string().optional(),
+    frequenciesTried: z.number().int().optional(),
+    scanMs: z.number().int().optional(),
+    deviceIdUsed: z.string().optional(),
+    gainModeUsed: LteScannerV1GainModeSchema.optional(),
+    gainTenthDbUsed: z.number().int().optional(),
+  }),
+);
+
 export const SdrIngestionV2CloseDeviceRequestSchema = z.lazy(() =>
   z.object({
     sessionId: z.string().optional(),
@@ -413,6 +503,9 @@ export const SdrIngestionV2GetDeviceStateResponseSchema = z.lazy(() =>
     currentHarogicConfig: SdrIngestionV2HarogicConfigSchema.optional(),
     harogicReconfigCountTotal: z.string().optional(),
     harogicApiErrorsTotal: z.string().optional(),
+    deviceTemperatureC: z.number().int().optional(),
+    hostTemperatureC: z.number().int().optional(),
+    harogicSignalLevelWarningsTotal: z.string().optional(),
   }),
 );
 
@@ -900,6 +993,12 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'gsm_classifier.v1.ScanActivityResponse': GsmClassifierV1ScanActivityResponseSchema,
   'gsm_classifier.v1.ScanBandRequest': GsmClassifierV1ScanBandRequestSchema,
   'gsm_classifier.v1.ScanBandResponse': GsmClassifierV1ScanBandResponseSchema,
+  'lte_scanner.v1.ClassifyFrequencyRequest': LteScannerV1ClassifyFrequencyRequestSchema,
+  'lte_scanner.v1.ClassifyFrequencyResponse': LteScannerV1ClassifyFrequencyResponseSchema,
+  'lte_scanner.v1.DetectedCell': LteScannerV1DetectedCellSchema,
+  'lte_scanner.v1.LTEEvidence': LteScannerV1LTEEvidenceSchema,
+  'lte_scanner.v1.ScanBandRequest': LteScannerV1ScanBandRequestSchema,
+  'lte_scanner.v1.ScanBandResponse': LteScannerV1ScanBandResponseSchema,
   'sdr_ingestion.v2.CloseDeviceRequest': SdrIngestionV2CloseDeviceRequestSchema,
   'sdr_ingestion.v2.CloseDeviceResponse': SdrIngestionV2CloseDeviceResponseSchema,
   'sdr_ingestion.v2.DeviceDescriptor': SdrIngestionV2DeviceDescriptorSchema,

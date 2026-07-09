@@ -1,0 +1,160 @@
+syntax = "proto3";
+package lte_scanner.v1;
+
+// LTE Scanner — Spec 011. Sweep a band for LTE cells, or classify one
+// frequency as LTE / not-LTE. Wraps the LTE-Cell-Scanner CellSearch binary.
+
+service LTEScanner {
+  // Sweep [freq_start_hz, freq_end_hz] in freq_step_hz steps; return all
+  // confirmed LTE cells. Unary: blocks for the whole sweep. Prefer
+  // ScanBandStream for wide ranges.
+  rpc ScanBand (ScanBandRequest) returns (ScanBandResponse);
+
+  // Same sweep, streaming: one DetectedCell message per confirmed cell as
+  // CellSearch confirms it, then the call completes. Lets callers show
+  // progress and cancel a long sweep.
+  rpc ScanBandStream (ScanBandRequest) returns (stream DetectedCell);
+
+  // Single-frequency yes/no. Is the signal at target_freq_hz LTE?
+  rpc ClassifyFrequency (ClassifyFrequencyRequest) returns (ClassifyFrequencyResponse);
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED  = 0;
+  VERDICT_LTE          = 1;  // is_lte == true; >=1 cell confirmed
+  VERDICT_NOT_LTE      = 2;  // no cell confirmed
+  VERDICT_INCONCLUSIVE = 3;  // PSS peaks found but never confirmed (weak/off-center)
+}
+
+enum DuplexMode {
+  DUPLEX_MODE_UNSPECIFIED = 0;
+  DUPLEX_MODE_FDD         = 1;
+  DUPLEX_MODE_TDD         = 2;
+}
+
+// Tuner gain control. Maps onto sdr_ingestion.v1.GainMode and CellSearch -g.
+enum GainMode {
+  GAIN_MODE_UNSPECIFIED = 0;  // service default (MANUAL 40 for HackRF; AUTO for RTL-SDR)
+  GAIN_MODE_AUTO        = 1;
+  GAIN_MODE_MANUAL      = 2;
+}
+
+message ScanBandRequest {
+  // Required. Sweep start, in Hz. Must be within the tuner's range.
+  uint64 freq_start_hz = 1;
+
+  // Required. Sweep end, in Hz. Must be >= freq_start_hz and within range.
+  uint64 freq_end_hz = 2;
+
+  // Optional. Step between center frequencies, in Hz. 0/unset → service
+  // default 5_000_000 (5 MHz). A coarse step (1–5 MHz) lands on channel
+  // centers and is both fast and more reliable; the fine 100 kHz raster is
+  // slow and frequently lands beside a cell center, producing PSS peaks that
+  // never confirm. See §5.2. Clamped to [100_000, 20_000_000].
+  uint64 freq_step_hz = 3;
+
+  // Optional. Specific SDR ("hackrf:0", "rtlsdr:0"). Empty → first device.
+  string device_id = 4;
+
+  // Optional. Gain mode (see enum).
+  GainMode gain_mode = 5;
+
+  // Optional. Manual gain in tenths of dB; honoured only when MANUAL.
+  // Maps to CellSearch -g (whole dB). For HackRF the proven value is 40 dB.
+  int32 gain_tenth_db = 6;
+
+  // Optional. Crystal PPM search range passed to CellSearch -p. 0/unset →
+  // service default (50). Wider helps weak signals lock; raises scan time.
+  uint32 ppm = 7;
+
+  // Optional. Tries per frequency (CellSearch -n). 0/unset → 1. Higher
+  // improves confirmation on weak signals at a linear time cost.
+  uint32 num_try = 8;
+
+  // Optional. Disable carrier-sampling-twisted mode (CellSearch -t).
+  // Recommended TRUE for HackRF (independent LO). Default TRUE.
+  bool disable_twisted = 9;
+}
+
+message ScanBandResponse {
+  repeated DetectedCell cells = 1;
+
+  // Echo of what the service actually did.
+  uint64 scanned_start_hz   = 2;
+  uint64 scanned_end_hz     = 3;
+  uint64 scanned_step_hz    = 4;
+  uint32 frequencies_tried  = 5;   // number of center frequencies examined
+  uint32 scan_ms            = 6;   // wall-clock of the sweep
+  string device_id_used     = 7;
+  GainMode gain_mode_used   = 8;
+  int32    gain_tenth_db_used = 9;
+}
+
+message ClassifyFrequencyRequest {
+  // Required. Target center frequency in Hz. Must be within tuner range.
+  uint64 target_freq_hz = 1;
+
+  // Optional. Same gain/ppm/try knobs as ScanBand.
+  string   device_id     = 2;
+  GainMode gain_mode     = 3;
+  int32    gain_tenth_db = 4;
+  uint32   ppm           = 5;
+  uint32   num_try       = 6;   // 0/unset → service default 3 (single freq, so cheap)
+  bool     disable_twisted = 7;
+}
+
+message ClassifyFrequencyResponse {
+  Verdict verdict    = 1;
+  bool    is_lte     = 2;  // mirror of verdict == VERDICT_LTE
+  float   confidence = 3;  // [0,1]; see §5.5
+
+  // Cells confirmed at this frequency (usually 0 or 1; >1 in dense areas).
+  repeated DetectedCell cells = 4;
+
+  // Pre-confirmation evidence — populated even when no cell confirms, so
+  // callers can tell "nothing here" from "something here we couldn't lock".
+  LTEEvidence evidence = 5;
+
+  // Echo.
+  uint64 captured_freq_hz   = 6;
+  string device_id_used     = 7;
+  GainMode gain_mode_used   = 8;
+  int32    gain_tenth_db_used = 9;
+}
+
+// One LTE cell as confirmed by CellSearch. Field names mirror CellSearch's
+// final table: "DPX CID A fc freq-offset RXPWR C nRB P PR CrystalCorrection".
+message DetectedCell {
+  DuplexMode duplex_mode        = 1;   // DPX
+  uint32     cell_id            = 2;   // CID  (n_id_cell, 0..503)
+  uint32     pss_id             = 3;   // n_id_2 (0..2)
+  uint32     antenna_ports      = 4;   // A    (1, 2, or 4)
+  uint64     center_freq_hz     = 5;   // fc
+  double     freq_offset_hz     = 6;   // freq-offset (residual)
+  float      rx_power_db        = 7;   // RXPWR (db10 of pss_pow)
+  string     cp_type            = 8;   // C   ("normal" | "extended" | "unknown")
+  uint32     n_rb_dl            = 9;   // nRB (6,15,25,50,75,100 → 1.4..20 MHz)
+  string     phich_duration     = 10;  // P   ("normal" | "extended" | "unknown")
+  string     phich_resource     = 11;  // PR  ("1/6" | "1/2" | "one" | "two")
+  double     crystal_correction = 12;  // CrystalCorrectionFactor (reuse via -c)
+
+  // Spec 027 followup. True only for a row from CellSearch's final
+  // deduplicated table (§6.6) — every field above is meaningful. False means
+  // this is a live, unconfirmed "Detected a cell!" hit seen mid-sweep in
+  // ScanBandStream only: only duplex_mode and center_freq_hz are populated
+  // (the examined center frequency, not yet frequency-corrected); every
+  // other field reads its zero value. Lets a caller show sweep progress the
+  // way a Bluetooth scan shows devices appearing, while the final table
+  // remains the only authoritative, deduplicated source of truth. ScanBand
+  // (unary) and ClassifyFrequency never emit confirmed=false — only
+  // ScanBandStream's mid-sweep events do.
+  bool confirmed = 13;
+}
+
+// Evidence from the pre-confirmation PSS search, for the single-frequency path.
+message LTEEvidence {
+  uint32 pss_peaks_found        = 1;  // "Hit  num peaks N" max across tries
+  bool   any_peak_confirmed     = 2;  // did SSS/MIB confirm any peak?
+  float  input_level_avg        = 3;  // CellSearch "input level avg abs" (0..~1)
+  bool   input_level_saturated  = 4;  // input_level_avg > 0.8 ⇒ overload (lower gain)
+}

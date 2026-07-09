@@ -110,6 +110,27 @@
       "responseStream": false
     },
     {
+      "serviceName": "LTEScanner",
+      "methodName": "ScanBand",
+      "requestEvent": "grpc:invoke:LTEScanner.ScanBand",
+      "responseEvent": "LTEScanner.ScanBand",
+      "responseStream": false
+    },
+    {
+      "serviceName": "LTEScanner",
+      "methodName": "ScanBandStream",
+      "requestEvent": "grpc:invoke:LTEScanner.ScanBandStream",
+      "responseEvent": "LTEScanner.ScanBandStream",
+      "responseStream": true
+    },
+    {
+      "serviceName": "LTEScanner",
+      "methodName": "ClassifyFrequency",
+      "requestEvent": "grpc:invoke:LTEScanner.ClassifyFrequency",
+      "responseEvent": "LTEScanner.ClassifyFrequency",
+      "responseStream": false
+    },
+    {
       "serviceName": "SignalRecorder",
       "methodName": "StartRecording",
       "requestEvent": "grpc:invoke:SignalRecorder.StartRecording",
@@ -176,11 +197,13 @@
 16. الباك يستدعي `TETRAClassifier.ClassifyFrequency` على gRPC ويرجع النتيجة لنفس العميل عبر `grpc:result` وأيضًا عبر `TETRAClassifier.ClassifyFrequency`.
 17. عندما يريد الفرونت الكشف عن إشارات GSM، يرسل أحد أحداث `GSMClassifier` مثل `grpc:invoke:GSMClassifier.ClassifyFrequency` أو `grpc:invoke:GSMClassifier.AnalyzeCell` أو `grpc:invoke:GSMClassifier.ScanBand` أو `grpc:invoke:GSMClassifier.ScanActivity`.
 18. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `GSMClassifier.ScanBand`.
-19. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
-20. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
-21. الباك يطلب الستريم الموافق من gRPC.
-22. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
-23. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
+19. عندما يريد الفرونت فحص LTE أو مسح نطاق LTE، يرسل أحد أحداث `LTEScanner` مثل `grpc:invoke:LTEScanner.ClassifyFrequency` أو `grpc:invoke:LTEScanner.ScanBand` أو `grpc:invoke:LTEScanner.ScanBandStream`.
+20. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `LTEScanner.ScanBand`، أو يبدأ stream على `LTEScanner.ScanBandStream` مع acknowledgment أولًا.
+21. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
+22. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
+23. الباك يطلب الستريم الموافق من gRPC.
+24. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
+25. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `LTEScanner.ScanBandStream` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
 
 ## 2.2) أقل سيناريو مطلوب ليبدأ النظام بالعمل
 
@@ -292,6 +315,28 @@ Backend   -> grpc:result -> Frontend
 Backend   -> GSMClassifier.ScanActivity -> Frontend
 ```
 
+### فحص/مسح LTE
+
+```text
+Frontend  -> grpc:invoke:LTEScanner.ClassifyFrequency -> Backend
+Backend   -> LTEScanner.ClassifyFrequency (gRPC) -> gRPC server
+gRPC      -> ClassifyFrequencyResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> LTEScanner.ClassifyFrequency -> Frontend
+
+Frontend  -> grpc:invoke:LTEScanner.ScanBand -> Backend
+Backend   -> LTEScanner.ScanBand (gRPC) -> gRPC server
+gRPC      -> ScanBandResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> LTEScanner.ScanBand -> Frontend
+
+Frontend  -> grpc:invoke:LTEScanner.ScanBandStream -> Backend
+Backend   -> LTEScanner.ScanBandStream (gRPC stream) -> gRPC server
+Backend   -> grpc:result { mode: server-stream } -> Frontend
+gRPC      -> DetectedCell #1..n -> Backend
+Backend   -> LTEScanner.ScanBandStream #1..n -> Frontend
+```
+
 ### بدء ومتابعة تسجيل إشارة
 
 ```text
@@ -358,6 +403,9 @@ Backend   -> DroneIDService.GetAntSDRStatus -> Frontend
 - `GSMClassifier.AnalyzeCell`
 - `GSMClassifier.ScanBand`
 - `GSMClassifier.ScanActivity`
+- `LTEScanner.ClassifyFrequency`
+- `LTEScanner.ScanBand`
+- `LTEScanner.ScanBandStream`
 - `TETRAClassifier.ClassifyFrequency`
 - `SignalRecorder.StartRecording`
 - `SignalRecorder.StopRecording`
@@ -403,11 +451,25 @@ Payload:
 
 - الباك يستقبل أسماء الحقول بصيغة `camelCase` وليس `snake_case`.
 - أي field من نوع `uint64` أو `int64` في الـ proto يظهر هنا عادة كسلسلة نصية `string` وليس كرقم JavaScript عادي.
-- مثال صحيح: `deviceId`, `centerFreqHz`, `sampleRateHz`
+- مثال صحيح: `deviceId`, `centerFreqHz`, `sampleRateHz`, `refLevelDbm`
 - مثال صحيح في خدمة DMR: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`
 - مثال صحيح في خدمة TETRA: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`, `earlyExitOnFirstFrame`, `maxFrames`
+- مثال صحيح في خدمة LTE ScanBand: `freqStartHz`, `freqEndHz`, `freqStepHz`, `deviceId`, `gainMode`, `gainTenthDb`, `ppm`, `numTry`, `disableTwisted`
 - مثال صحيح في خدمة SignalRecorder: `targetFreqHz`, `output`, `demod`, `durationMs`, `bandwidthHz`, `deviceId`, `sampleRateHz`, `label`, `gainTenthDb`, `gainManual`
-- مثال خاطئ: `device_id`, `center_freq_hz`, `sample_rate_hz`
+- مثال خاطئ: `device_id`, `center_freq_hz`, `sample_rate_hz`, `ref_level_dbm` ❌
+
+**أمثلة على تحويل الحقول من proto إلى Socket.IO**:
+
+| Proto | Socket.IO | النوع |
+|-------|-----------|-------|
+| `ref_level_dbm` | `refLevelDbm` | `int32` |
+| `ref_level_dbm_set` | `refLevelDbmSet` | `bool` |
+| `if_gain_grade` | `ifGainGrade` | `uint32` |
+| `if_gain_grade_set` | `ifGainGradeSet` | `bool` |
+| `atten_db` | `attenDb` | `int32` |
+| `atten_db_set` | `attenDbSet` | `bool` |
+| `start_freq_hz` | `startFreqHz` | `uint64` (ترسل كـ `string`) |
+| `stop_freq_hz` | `stopFreqHz` | `uint64` (ترسل كـ `string`) |
 
 ### `grpc:invoke:Service.Method`
 
@@ -658,13 +720,6 @@ Response payload:
   "deviceIdUsed": "rtlsdr:2",
   "gainModeUsed": "GAIN_MODE_AUTO",
   "gainTenthDbUsed": 0,
-  "frames": [
-    "{\"type\":\"BSCH\",\"mcc\":425}",
-    "{\"type\":\"SYSINFO\",\"mnc\":1}"
-  ],
-  "framesTruncated": false
-}
-```
 
 قد يتأخر هذا الاستدعاء عدة ثوانٍ لأن الخدمة تنتظر التقاط وتحليل الإطارات قبل الرد، لذلك تم رفع المهلة الخاصة به في الباك.
 
@@ -756,6 +811,167 @@ Response payload:
   "requestId": "gsm-req-001"
 }
 ```
+
+### LTEScanner Events
+
+الأحداث المتاحة:
+
+- `grpc:invoke:LTEScanner.ScanBand` (unary)
+- `grpc:invoke:LTEScanner.ScanBandStream` (server-stream)
+- `grpc:invoke:LTEScanner.ClassifyFrequency` (unary)
+
+الأحداث التي يجب الاستماع لها في الفرونت:
+
+- `LTEScanner.ScanBand`
+- `LTEScanner.ScanBandStream`
+- `LTEScanner.ClassifyFrequency`
+
+#### `LTEScanner.ScanBand`
+
+Request payload:
+
+```json
+{
+  "freqStartHz": "925000000",
+  "freqEndHz": "960000000",
+  "freqStepHz": "5000000",
+  "deviceId": "rtlsdr:0",
+  "gainMode": "GAIN_MODE_AUTO",
+  "gainTenthDb": 0,
+  "ppm": 50,
+  "numTry": 1,
+  "disableTwisted": true
+}
+```
+
+Response payload (مختصر):
+
+```json
+{
+  "cells": [
+    {
+      "duplexMode": "DUPLEX_MODE_FDD",
+      "cellId": 231,
+      "pssId": 2,
+      "antennaPorts": 2,
+      "centerFreqHz": "947500000",
+      "freqOffsetHz": -1200.5,
+      "rxPowerDb": -63.2,
+      "cpType": "normal",
+      "nRbDl": 50,
+      "phichDuration": "normal",
+      "phichResource": "one",
+      "crystalCorrection": -1.3,
+      "confirmed": true
+    }
+  ],
+  "scannedStartHz": "925000000",
+  "scannedEndHz": "960000000",
+  "scannedStepHz": "5000000",
+  "frequenciesTried": 8,
+  "scanMs": 12400,
+  "deviceIdUsed": "rtlsdr:0",
+  "gainModeUsed": "GAIN_MODE_AUTO",
+  "gainTenthDbUsed": 0
+}
+```
+
+#### `LTEScanner.ScanBandStream`
+
+Request payload:
+
+```json
+{
+  "freqStartHz": "925000000",
+  "freqEndHz": "960000000",
+  "freqStepHz": "5000000",
+  "deviceId": "rtlsdr:0",
+  "gainMode": "GAIN_MODE_MANUAL",
+  "gainTenthDb": 287,
+  "ppm": 50,
+  "numTry": 2,
+  "disableTwisted": true
+}
+```
+
+Stream message payload (قد يكون confirmed=false أثناء التقدّم):
+
+```json
+{
+  "duplexMode": "DUPLEX_MODE_FDD",
+  "cellId": 231,
+  "pssId": 2,
+  "antennaPorts": 2,
+  "centerFreqHz": "947500000",
+  "freqOffsetHz": -1200.5,
+  "rxPowerDb": -63.2,
+  "cpType": "normal",
+  "nRbDl": 50,
+  "phichDuration": "normal",
+  "phichResource": "one",
+  "crystalCorrection": -1.3,
+  "confirmed": true
+}
+```
+
+#### `LTEScanner.ClassifyFrequency`
+
+Request payload:
+
+```json
+{
+  "targetFreqHz": "947500000",
+  "deviceId": "rtlsdr:0",
+  "gainMode": "GAIN_MODE_AUTO",
+  "gainTenthDb": 0,
+  "ppm": 50,
+  "numTry": 3,
+  "disableTwisted": true
+}
+```
+
+Response payload (مختصر):
+
+```json
+{
+  "verdict": "VERDICT_LTE",
+  "isLte": true,
+  "confidence": 0.93,
+  "cells": [
+    {
+      "duplexMode": "DUPLEX_MODE_FDD",
+      "cellId": 231,
+      "pssId": 2,
+      "antennaPorts": 2,
+      "centerFreqHz": "947500000",
+      "freqOffsetHz": -1200.5,
+      "rxPowerDb": -63.2,
+      "cpType": "normal",
+      "nRbDl": 50,
+      "phichDuration": "normal",
+      "phichResource": "one",
+      "crystalCorrection": -1.3,
+      "confirmed": true
+    }
+  ],
+  "evidence": {
+    "pssPeaksFound": 3,
+    "anyPeakConfirmed": true,
+    "inputLevelAvg": 0.28,
+    "inputLevelSaturated": false
+  },
+  "capturedFreqHz": "947500000",
+  "deviceIdUsed": "rtlsdr:0",
+  "gainModeUsed": "GAIN_MODE_AUTO",
+  "gainTenthDbUsed": 0
+}
+```
+
+ملاحظات مهمة:
+
+- الحقول 64-bit مثل `freqStartHz` و`freqEndHz` و`freqStepHz` و`targetFreqHz` تُرسل كسلاسل نصية `string`.
+- استخدم أسماء `camelCase` فقط.
+- `ScanBandStream` يعيد رسائل متتالية من نوع `DetectedCell` وقد يظهر فيها `confirmed=false` أثناء المسح.
 
 ### SignalRecorder Events
 
@@ -1088,7 +1304,7 @@ Response payload:
 
 #### `DeviceControl.OpenDevice`
 
-Request payload:
+Request payload (بسيط):
 
 ```json
 {
@@ -1099,6 +1315,24 @@ Request payload:
   "gainTenthDb": 200,
   "freqCorrectionPpm": 0,
   "harogic": {}
+}
+```
+
+Request payload (مع تعيين `ref_level_dbm` للجهاز Harogic):
+
+```json
+{
+  "deviceId": "harogic-0",
+  "centerFreqHz": "100000000",
+  "sampleRateHz": 2048000,
+  "gainMode": "GAIN_MODE_MANUAL",
+  "gainTenthDb": 200,
+  "freqCorrectionPpm": 0,
+  "harogic": {
+    "refLevelDbmSet": true,
+    "refLevelDbm": -30,
+    "tracePoints": 2048
+  }
 }
 ```
 
@@ -1139,6 +1373,12 @@ Response payload:
   "actualSampleRateHz": 2048000
 }
 ```
+
+**ملاحظات مهمة**:
+
+- عند فتح جهاز Harogic، يمكنك تمرير `harogic` config object لتطبيق الإعدادات فورًا
+- حقل `refLevelDbmSet` يجب أن يكون `true` لكي يتم تطبيق `refLevelDbm`
+- يمكنك تجاهل `harogic` تمامًا (إرسال `{}`) إذا أردت استخدام الإعدادات الافتراضية
 
 #### `DeviceControl.CloseDevice`
 
@@ -1254,13 +1494,49 @@ Response payload مختصر:
   "freqCorrectionPpm": 1,
   "subscribers": 2,
   "supportedGainsTenthDb": [0, 77, 125, 150],
-  "currentCaptureMode": "CAPTURE_MODE_RTA_SPECTRUM"
+  "currentCaptureMode": "CAPTURE_MODE_RTA_SPECTRUM",
+  "harogicSignalLevelWarningsTotal": "3"
 }
 ```
 
+Response payload لجهاز Harogic (يتضمن إعدادات Harogic الحالية):
+
+```json
+{
+  "centerFreqHz": "101700000",
+  "sampleRateHz": 2048000,
+  "gainMode": "GAIN_MODE_MANUAL",
+  "gainTenthDb": 150,
+  "freqCorrectionPpm": 1,
+  "subscribers": 2,
+  "supportedGainsTenthDb": [0, 77, 125, 150],
+  "currentCaptureMode": "CAPTURE_MODE_RTA_SPECTRUM",
+  "harogicSignalLevelWarningsTotal": "7",
+  "currentHarogicConfig": {
+    "refLevelDbmSet": true,
+    "refLevelDbm": -20,
+    "ifGainGradeSet": true,
+    "ifGainGrade": 5,
+    "attenDbSet": true,
+    "attenDb": 10,
+    "rbwMode": "HAROGIC_RBW_AUTO",
+    "vbwMode": "HAROGIC_VBW_EQUAL_TO_RBW",
+    "tracePoints": 2048
+  }
+}
+```
+
+**ملاحظات مهمة**:
+
+- عندما تكون الجلسة لجهاز Harogic، ستحتوي الاستجابة على حقل `currentHarogicConfig` يعكس الإعدادات الحالية للجهاز
+- الحقل `harogicSignalLevelWarningsTotal` عدّاد تراكمي لتحذيرات مستوى الإشارة (مثل IFOverflow/status -12) منذ فتح الجلسة
+- هذا الحقل من نوع `uint64` لذلك يصل كسلسلة نصية `string`
+- يمكن استخدام `refLevelDbm` من هذه الاستجابة لمعرفة المستوى المرجعي الحالي على الجهاز
+- إذا كنت تريد تعديل `ref_level_dbm`، استخدم `SetHarogicConfig` كما موضح بالأعلى
+
 #### `DeviceControl.SetHarogicConfig`
 
-Request payload:
+Request payload (مثال أساسي):
 
 ```json
 {
@@ -1277,11 +1553,14 @@ Request payload:
 }
 ```
 
-Response payload:
+Request payload (مع تعديل `ref_level_dbm`):
 
 ```json
 {
-  "effective": {
+  "sessionId": "session-123",
+  "config": {
+    "refLevelDbmSet": true,
+    "refLevelDbm": -20,
     "startFreqHzSet": true,
     "startFreqHz": "88000000",
     "stopFreqHzSet": true,
@@ -1293,14 +1572,54 @@ Response payload:
 }
 ```
 
-الحقول الجديدة داخل `HarogicConfig` هي:
+Response payload:
 
-- `startFreqHzSet`
-- `startFreqHz`
-- `stopFreqHzSet`
-- `stopFreqHz`
+```json
+{
+  "effective": {
+    "refLevelDbmSet": true,
+    "refLevelDbm": -20,
+    "startFreqHzSet": true,
+    "startFreqHz": "88000000",
+    "stopFreqHzSet": true,
+    "stopFreqHz": "108000000",
+    "tracePoints": 2048,
+    "rbwMode": "HAROGIC_RBW_AUTO",
+    "vbwMode": "HAROGIC_VBW_EQUAL_TO_RBW"
+  }
+}
+```
 
-هذه القيم تسمح بتعديل نطاق السويب أثناء تشغيل session Harogic عبر `DeviceControl.SetHarogicConfig` بدون الحاجة لإغلاق وإعادة فتح `SpectrumStream.SubscribeSweep`.
+الحقول الجديدة / المهمة داخل `HarogicConfig`:
+
+- `startFreqHzSet`: يشير إلى تعديل تردد البداية
+- `startFreqHz`: قيمة تردد البداية (Hz)
+- `stopFreqHzSet`: يشير إلى تعديل تردد النهاية
+- `stopFreqHz`: قيمة تردد النهاية (Hz)
+- `refLevelDbmSet`: يشير إلى تعديل مستوى المرجع (جديد)
+- `refLevelDbm`: مستوى المرجع بـ dBm، النطاق النموذجي: −80 … +20 (جديد)
+
+**ملاحظات مهمة عن `ref_level_dbm`**:
+
+- يجب ضبط `refLevelDbmSet` إلى `true` لكي يتم تطبيق القيمة الجديدة
+- القيمة تمثل مستوى الإشارة المرجعي على الطيف (Reference Level)
+- النطاق الموصى به: من −80 dBm (إشارات ضعيفة جدًا) إلى +20 dBm (إشارات قوية جدًا)
+- هذا الحقل ينطبق على أجهزة Harogic فقط
+- عند تعديل هذه القيمة، الجهاز سيعيد ضبط مقياس الطيف بناءً على المستوى الجديد
+
+**مثال عملي لتقليل ضوضاء الخلفية**:
+
+```json
+{
+  "sessionId": "session-123",
+  "config": {
+    "refLevelDbmSet": true,
+    "refLevelDbm": -50
+  }
+}
+```
+
+هذه القيم تسمح بتعديل نطاق السويب وإعدادات الطيف أثناء تشغيل session Harogic عبر `DeviceControl.SetHarogicConfig` بدون الحاجة لإغلاق وإعادة فتح `SpectrumStream.SubscribeSweep`.
 
 #### `DeviceControl.ListSessions`
 
@@ -1685,7 +2004,7 @@ Stream message payload:
   "droppedSweepsBefore": 0
 }
 ```
-
+ 
 ## 6) قائمة events النهائية المختصرة
 
 قبل القائمة، هذا التوضيح مهم جدًا:
@@ -1860,6 +2179,9 @@ Stream message payload:
 - `grpc:invoke`
 - `grpc:invoke:DMRClassifier.ClassifyFrequency`
 - `grpc:invoke:TETRAClassifier.ClassifyFrequency`
+- `grpc:invoke:LTEScanner.ScanBand`
+- `grpc:invoke:LTEScanner.ScanBandStream`
+- `grpc:invoke:LTEScanner.ClassifyFrequency`
 - `grpc:invoke:SignalRecorder.StartRecording`
 - `grpc:invoke:SignalRecorder.StopRecording`
 - `grpc:invoke:SignalRecorder.GetRecording`
@@ -1889,6 +2211,9 @@ Stream message payload:
 - `grpc:error`
 - `DMRClassifier.ClassifyFrequency`
 - `TETRAClassifier.ClassifyFrequency`
+- `LTEScanner.ScanBand`
+- `LTEScanner.ScanBandStream`
+- `LTEScanner.ClassifyFrequency`
 - `SignalRecorder.StartRecording`
 - `SignalRecorder.StopRecording`
 - `SignalRecorder.GetRecording`

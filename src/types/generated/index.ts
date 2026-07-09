@@ -16,6 +16,12 @@ export type GsmClassifierV1Speed = 'SPEED_UNSPECIFIED' | 'SPEED_FAST' | 'SPEED_N
 
 export type GsmClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_GSM' | 'VERDICT_NOT_GSM' | 'VERDICT_INCONCLUSIVE';
 
+export type LteScannerV1DuplexMode = 'DUPLEX_MODE_UNSPECIFIED' | 'DUPLEX_MODE_FDD' | 'DUPLEX_MODE_TDD';
+
+export type LteScannerV1GainMode = 'GAIN_MODE_UNSPECIFIED' | 'GAIN_MODE_AUTO' | 'GAIN_MODE_MANUAL';
+
+export type LteScannerV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_LTE' | 'VERDICT_NOT_LTE' | 'VERDICT_INCONCLUSIVE';
+
 export type SdrIngestionV2CaptureMode = 'CAPTURE_MODE_UNSPECIFIED' | 'CAPTURE_MODE_NONE' | 'CAPTURE_MODE_IQS' | 'CAPTURE_MODE_RTA_SPECTRUM' | 'CAPTURE_MODE_RTA_WATERFALL' | 'CAPTURE_MODE_SWP_SWEEP' | 'CAPTURE_MODE_DET';
 
 export type SdrIngestionV2DeviceKind = 'DEVICE_KIND_UNSPECIFIED' | 'DEVICE_KIND_RTLSDR' | 'DEVICE_KIND_HACKRF' | 'DEVICE_KIND_HAROGIC';
@@ -290,6 +296,75 @@ export interface GsmClassifierV1ScanBandResponse {
   cells: GsmClassifierV1CellInfo[];
 }
 
+export interface LteScannerV1ClassifyFrequencyRequest {
+  targetFreqHz?: string;
+  deviceId?: string;
+  gainMode?: LteScannerV1GainMode;
+  gainTenthDb?: number;
+  ppm?: number;
+  numTry?: number;
+  disableTwisted?: boolean;
+}
+
+export interface LteScannerV1ClassifyFrequencyResponse {
+  verdict?: LteScannerV1Verdict;
+  isLte?: boolean;
+  confidence?: number;
+  cells: LteScannerV1DetectedCell[];
+  evidence?: LteScannerV1LTEEvidence;
+  capturedFreqHz?: string;
+  deviceIdUsed?: string;
+  gainModeUsed?: LteScannerV1GainMode;
+  gainTenthDbUsed?: number;
+}
+
+export interface LteScannerV1DetectedCell {
+  duplexMode?: LteScannerV1DuplexMode;
+  cellId?: number;
+  pssId?: number;
+  antennaPorts?: number;
+  centerFreqHz?: string;
+  freqOffsetHz?: number;
+  rxPowerDb?: number;
+  cpType?: string;
+  nRbDl?: number;
+  phichDuration?: string;
+  phichResource?: string;
+  crystalCorrection?: number;
+  confirmed?: boolean;
+}
+
+export interface LteScannerV1LTEEvidence {
+  pssPeaksFound?: number;
+  anyPeakConfirmed?: boolean;
+  inputLevelAvg?: number;
+  inputLevelSaturated?: boolean;
+}
+
+export interface LteScannerV1ScanBandRequest {
+  freqStartHz?: string;
+  freqEndHz?: string;
+  freqStepHz?: string;
+  deviceId?: string;
+  gainMode?: LteScannerV1GainMode;
+  gainTenthDb?: number;
+  ppm?: number;
+  numTry?: number;
+  disableTwisted?: boolean;
+}
+
+export interface LteScannerV1ScanBandResponse {
+  cells: LteScannerV1DetectedCell[];
+  scannedStartHz?: string;
+  scannedEndHz?: string;
+  scannedStepHz?: string;
+  frequenciesTried?: number;
+  scanMs?: number;
+  deviceIdUsed?: string;
+  gainModeUsed?: LteScannerV1GainMode;
+  gainTenthDbUsed?: number;
+}
+
 export interface SdrIngestionV2CloseDeviceRequest {
   sessionId?: string;
 }
@@ -331,6 +406,9 @@ export interface SdrIngestionV2GetDeviceStateResponse {
   currentHarogicConfig?: SdrIngestionV2HarogicConfig;
   harogicReconfigCountTotal?: string;
   harogicApiErrorsTotal?: string;
+  deviceTemperatureC?: number;
+  hostTemperatureC?: number;
+  harogicSignalLevelWarningsTotal?: string;
 }
 
 export interface SdrIngestionV2HarogicCapabilities {

@@ -354,6 +354,21 @@ message GetDeviceStateResponse {
   HarogicConfig  current_harogic_config  = 21;
   uint64         harogic_reconfig_count_total = 22;
   uint64         harogic_api_errors_total     = 23;
+
+  // — Temperature (Spec 009) —
+  // Device (Harogic) temperature in whole °C. Sentinel -1000 = unavailable
+  // (0 °C is a valid reading and proto3 int32 has no presence).
+  int32 device_temperature_c = 24;
+  // Raspberry-Pi / host CPU temperature in whole °C. -1000 = unavailable.
+  int32 host_temperature_c   = 25;
+
+  // — Signal-level warnings (Spec 023) —
+  // Cumulative count of recoverable RF/config-level warnings (currently just
+  // IFOverflow, status -12) since the device was opened. Never causes a
+  // session teardown. A rising value between two polls means the signal
+  // currently on the air exceeds RefLevel_dBm — raise it (or let the
+  // client's auto-adjust do so).
+  uint64 harogic_signal_level_warnings_total = 26;
 }
 
 message PerSubscriberStats {

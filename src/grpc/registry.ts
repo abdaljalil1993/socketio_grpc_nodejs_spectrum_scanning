@@ -21,6 +21,7 @@ export const protoRegistry = {
   "src/proto/dmr_classifier.proto",
   "src/proto/droneid_service.proto",
   "src/proto/gsm_classifier.proto",
+  "src/proto/lte_scanner.proto",
   "src/proto/sdr.proto",
   "src/proto/signal_recorder.proto",
   "src/proto/tetra_classifier.proto"
@@ -116,6 +117,40 @@ export const protoRegistry = {
         "responseStream": false,
         "requestFieldCount": 6,
         "eventName": "GSMClassifier.ScanActivity"
+      }
+    ]
+  },
+  {
+    "packageName": "lte_scanner.v1",
+    "serviceName": "LTEScanner",
+    "fullServiceName": "lte_scanner.v1.LTEScanner",
+    "methods": [
+      {
+        "methodName": "ScanBand",
+        "requestType": "lte_scanner.v1.ScanBandRequest",
+        "responseType": "lte_scanner.v1.ScanBandResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 9,
+        "eventName": "LTEScanner.ScanBand"
+      },
+      {
+        "methodName": "ScanBandStream",
+        "requestType": "lte_scanner.v1.ScanBandRequest",
+        "responseType": "lte_scanner.v1.DetectedCell",
+        "requestStream": false,
+        "responseStream": true,
+        "requestFieldCount": 9,
+        "eventName": "LTEScanner.ScanBandStream"
+      },
+      {
+        "methodName": "ClassifyFrequency",
+        "requestType": "lte_scanner.v1.ClassifyFrequencyRequest",
+        "responseType": "lte_scanner.v1.ClassifyFrequencyResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 7,
+        "eventName": "LTEScanner.ClassifyFrequency"
       }
     ]
   },
@@ -362,6 +397,9 @@ export const protoRegistry = {
   "GSMClassifier.AnalyzeCell",
   "GSMClassifier.ScanBand",
   "GSMClassifier.ScanActivity",
+  "LTEScanner.ScanBand",
+  "LTEScanner.ScanBandStream",
+  "LTEScanner.ClassifyFrequency",
   "DeviceControl.ListDevices",
   "DeviceControl.OpenDevice",
   "DeviceControl.CloseDevice",
