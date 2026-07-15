@@ -59,6 +59,93 @@
 1. تعريف الحقل موجود في proto response: [src/proto/sdr.proto](src/proto/sdr.proto#L284).
 2. القيمة نفسها تأتي من خدمة gRPC الخارجية (الهاردوير backend) وليس من كود هذا الريبو.
 
+### الأسطر البرمجية المنفذة حرفيا (OpenDevice)
+المقتطف التالي هو المسار الفعلي من استقبال حدث السوكت إلى تنفيذ unary gRPC ثم إعادة النتيجة:
+
+```ts
+// src/socket/index.ts
+socket.on(SOCKET_INVOKE_EVENT, async (message: unknown) => {
+	...
+	await handleInvoke(
+		{
+			service: request.service,
+			method: request.method,
+			payload: request.payload,
+			requestId: typeof request.requestId === 'string' ? request.requestId : undefined
+		},
+		SOCKET_INVOKE_EVENT,
+	);
+});
+
+const handleInvoke = async ({ service, method, payload, requestId }: SocketInvokeRequest, triggerEvent: string) => {
+	const result = await gateway.invoke(service, method, payload ?? {}, { targetRoom: socket.id });
+
+	socket.emit(SOCKET_RESULT_EVENT, {
+		requestId,
+		triggerEvent,
+		service,
+		method,
+		result
+	});
+};
+
+// src/grpc/handlers.ts
+async invoke(serviceName, methodName, payload, options) {
+	const { service, method } = resolveMethod(serviceName, methodName);
+
+	if (isUnaryMethod(method)) {
+		const parsedPayload = validateRequestWithSchema(method.definition.requestType, payload, logger);
+
+		const response = await new Promise<unknown>((resolve, reject) => {
+			(service.client as any)[method.clientMethodName](parsedPayload, (error, result) => {
+				if (error) {
+					reject(error);
+					return;
+				}
+				resolve(result);
+			});
+		});
+
+		const emittedPayload = emitValidatedMessage(service, method, response, {
+			broadcast: !options?.targetRoom,
+			targetRooms: new Set(options?.targetRoom ? [options.targetRoom] : [])
+		});
+
+		return {
+			mode: 'unary',
+			eventName: method.definition.eventName,
+			payload: emittedPayload
+		};
+	}
+}
+
+// src/grpc/handlers.ts -> emitValidatedMessage
+for (const room of delivery.targetRooms) {
+	emitter.emit(method.definition.eventName, validatedPayload, { room });
+}
+
+// src/socket/emitter.ts
+if (options?.room) {
+	io.to(options.room).emit(eventName, payload);
+}
+```
+
+تفسير السطور، سطر-بسطر (نفس الترتيب التنفيذي):
+1. listener على الحدث العام يبدأ في [src/socket/index.ts](src/socket/index.ts#L105) ويستقبل الرسالة الخام.
+2. سطور التحقق تضمن أن الخدمة والطريقة سترنغ، وإلا يرجع grpc:error من [src/socket/index.ts](src/socket/index.ts#L118).
+3. استدعاء handleInvoke يتم في [src/socket/index.ts](src/socket/index.ts#L127) أو عبر الحدث الخاص في [src/socket/index.ts](src/socket/index.ts#L142).
+4. السطر [src/socket/index.ts](src/socket/index.ts#L74) هو نقطة العبور الأساسية من السوكت إلى gRPC gateway.
+5. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L523) يبدأ invoke داخل gateway.
+6. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L230) يتم جلب service من clients map.
+7. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L236) يتم جلب method داخل service.
+8. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L525) يتأكد أنه Unary وليس stream.
+9. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L526) يتم validate للـ payload بحسب schema type.
+10. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L547) يتم استدعاء gRPC method الفعلي على client.
+11. عند رجوع response، [src/grpc/handlers.ts](src/grpc/handlers.ts#L573) تمرر الرسالة لدالة emitValidatedMessage.
+12. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L353) يتم إرسال الحدث الخاص (DeviceControl.OpenDevice) لغرفة السوكيت.
+13. في [src/socket/emitter.ts](src/socket/emitter.ts#L28) يتم io.to(room).emit فعليا للعميل نفسه.
+14. بالتوازي، socket layer يعيد wrapper نتيجة الاستدعاء على grpc:result في [src/socket/index.ts](src/socket/index.ts#L76).
+
 ---
 
 ## Workflow 2: حدث SubscribeSweep كـ Socket Event
@@ -84,6 +171,73 @@
 13. البث الفعلي للغرفة يتم في [src/grpc/handlers.ts](src/grpc/handlers.ts#L353) ثم [src/socket/emitter.ts](src/socket/emitter.ts#L28).
 14. event الذي يصلك للبيانات هو SpectrumStream.SubscribeSweep حسب registry: [src/grpc/registry.ts](src/grpc/registry.ts#L300).
 15. ملاحظة: أول رد سريع على طلب الاشتراك نفسه يرجع كـ grpc:result من [src/socket/index.ts](src/socket/index.ts#L76)، ثم تبدأ رسائل sweep المتتالية كأحداث منفصلة.
+
+### الأسطر البرمجية المنفذة حرفيا (SubscribeSweep)
+المقتطف التالي هو المسار الفعلي لفتح stream ثم معالجة كل frame قادم:
+
+```ts
+// src/socket/index.ts
+const result = await gateway.invoke(service, method, payload ?? {}, { targetRoom: socket.id });
+
+// src/grpc/handlers.ts
+if (isServerStreamMethod(method)) {
+	const started = startServerStream(service, method, payload, 'api', options?.targetRoom);
+
+	return {
+		mode: 'server-stream',
+		...started
+	};
+}
+
+const startServerStream = (...) => {
+	const parsedPayload = validateRequestWithSchema(method.definition.requestType, payload, logger);
+	const streamKey = `${service.definition.fullServiceName}.${method.definition.methodName}:${stableStringify(parsedPayload)}`;
+
+	const call = (service.client as any)[method.clientMethodName](parsedPayload) as ClientReadableStream<unknown>;
+
+	activeStreams.set(streamKey, { metadata, delivery, call });
+
+	call.on('data', (message) => {
+		const currentStream = activeStreams.get(streamKey);
+		if (!currentStream) {
+			return;
+		}
+		emitValidatedMessage(service, method, message, currentStream.delivery);
+	});
+};
+
+const normalizeResponsePayload = (payload: unknown, responseType: string): unknown => {
+	if (responseType === 'sdr_ingestion.v2.SweepTrace') {
+		const sweep = payload as Record<string, unknown>;
+		const binaryPowers = toBinaryBuffer(sweep['powersDbm']);
+		return {
+			...sweep,
+			powersDbm: binaryPowers
+		};
+	}
+};
+
+for (const room of delivery.targetRooms) {
+	emitter.emit(method.definition.eventName, validatedPayload, { room });
+}
+```
+
+تفسير السطور، سطر-بسطر (نفس الترتيب التنفيذي):
+1. الدخول من السوكت إلى gateway يبدأ من [src/socket/index.ts](src/socket/index.ts#L74).
+2. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L585) يتم تمييز الطريقة كـ server-stream.
+3. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L586) يبدأ startServerStream مع targetRoom.
+4. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L396) يتم validate للطلب حسب SubscribeSweepRequest schema.
+5. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L397) يتم توليد streamKey لتمييز الاشتراك.
+6. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L414) يتم فتح stream call مع gRPC backend.
+7. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L427) يتم حفظه في activeStreams.
+8. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L438) يبدأ listener لكل data message قادمة.
+9. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L445) تمر كل رسالة إلى emitValidatedMessage.
+10. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L345) يبدأ normalizeResponsePayload للرسالة.
+11. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L252) يتم تحويل powersDbm إلى Binary Buffer.
+12. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L346) يتم validate response schema بعد التطبيع.
+13. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L353) يتم emit حدث SpectrumStream.SubscribeSweep لغرفة العميل.
+14. التنفيذ النهائي على Socket.IO يتم في [src/socket/emitter.ts](src/socket/emitter.ts#L28).
+15. اسم الحدث SpectrumStream.SubscribeSweep يأتي من registry في [src/grpc/registry.ts](src/grpc/registry.ts#L300).
 
 ---
 
