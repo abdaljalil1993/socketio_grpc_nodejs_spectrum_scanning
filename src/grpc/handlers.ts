@@ -123,6 +123,22 @@ const collectDroppedKeys = (input: unknown, parsed: unknown, prefix = ''): strin
   return droppedKeys;
 };
 
+const toBinaryBuffer = (value: unknown): Buffer | undefined => {
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value);
+  }
+
+  if (typeof value === 'string' && value.length > 0) {
+    return Buffer.from(value, 'base64');
+  }
+
+  return undefined;
+};
+
 const validateRequestWithSchema = (typeName: string, payload: unknown, logger: Logger) => {
   const schema = schemaRegistry[typeName];
 
@@ -227,6 +243,24 @@ export const createGrpcGateway = ({
   };
 
   const normalizeResponsePayload = (payload: unknown, responseType: string): unknown => {
+    if (responseType === 'sdr_ingestion.v2.SweepTrace') {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return payload;
+      }
+
+      const sweep = payload as Record<string, unknown>;
+      const binaryPowers = toBinaryBuffer(sweep['powersDbm']);
+
+      if (!binaryPowers) {
+        return payload;
+      }
+
+      return {
+        ...sweep,
+        powersDbm: binaryPowers
+      };
+    }
+
     if (responseType !== 'signal_recorder.v1.DownloadRecordingChunk') {
       return payload;
     }
