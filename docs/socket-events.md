@@ -150,6 +150,20 @@
       "requestEvent": "grpc:invoke:SignalRecorder.DownloadRecording",
       "responseEvent": "SignalRecorder.DownloadRecording",
       "responseStream": true
+    },
+    {
+      "serviceName": "SignalRecorder",
+      "methodName": "DownloadRecordingData",
+      "requestEvent": "grpc:invoke:SignalRecorder.DownloadRecordingData",
+      "responseEvent": "SignalRecorder.DownloadRecordingData",
+      "responseStream": true
+    },
+    {
+      "serviceName": "SignalRecorder",
+      "methodName": "DownloadRecordingMeta",
+      "requestEvent": "grpc:invoke:SignalRecorder.DownloadRecordingMeta",
+      "responseEvent": "SignalRecorder.DownloadRecordingMeta",
+      "responseStream": true
     }
   ]
 }
@@ -199,8 +213,8 @@
 18. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `GSMClassifier.ScanBand`.
 19. عندما يريد الفرونت فحص LTE أو مسح نطاق LTE، يرسل أحد أحداث `LTEScanner` مثل `grpc:invoke:LTEScanner.ClassifyFrequency` أو `grpc:invoke:LTEScanner.ScanBand` أو `grpc:invoke:LTEScanner.ScanBandStream`.
 20. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `LTEScanner.ScanBand`، أو يبدأ stream على `LTEScanner.ScanBandStream` مع acknowledgment أولًا.
-21. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording`.
-22. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording`.
+21. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording` أو `grpc:invoke:SignalRecorder.DownloadRecordingData` أو `grpc:invoke:SignalRecorder.DownloadRecordingMeta`.
+22. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording` و `SignalRecorder.DownloadRecordingData` و `SignalRecorder.DownloadRecordingMeta`.
 23. الباك يطلب الستريم الموافق من gRPC.
 24. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
 25. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `LTEScanner.ScanBandStream` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
@@ -357,7 +371,134 @@ Backend   -> SignalRecorder.DownloadRecording (gRPC stream) -> gRPC server
 Backend   -> grpc:result { mode: server-stream } -> Frontend
 gRPC      -> DownloadRecordingChunk #1..n -> Backend
 Backend   -> SignalRecorder.DownloadRecording #1..n -> Frontend
+
+Frontend  -> grpc:invoke:SignalRecorder.DownloadRecordingData -> Backend
+Backend   -> SignalRecorder.DownloadRecordingData (gRPC stream) -> gRPC server
+Backend   -> grpc:result { mode: server-stream } -> Frontend
+gRPC      -> DownloadRecordingChunk #1..n -> Backend
+Backend   -> SignalRecorder.DownloadRecordingData #1..n -> Frontend
+
+Frontend  -> grpc:invoke:SignalRecorder.DownloadRecordingMeta -> Backend
+Backend   -> SignalRecorder.DownloadRecordingMeta (gRPC stream) -> gRPC server
+Backend   -> grpc:result { mode: server-stream } -> Frontend
+gRPC      -> DownloadRecordingChunk #1..n -> Backend
+Backend   -> SignalRecorder.DownloadRecordingMeta #1..n -> Frontend
 ```
+
+## 7) العقد الكامل للأحداث الجديدة في SignalRecorder
+
+هذه الأحداث الجديدة كلها `server-stream` وتستخدم نفس request/response types:
+
+- requestType: `signal_recorder.v1.DownloadRecordingRequest`
+- responseType: `signal_recorder.v1.DownloadRecordingChunk`
+
+### 7.1) grpc:invoke:SignalRecorder.DownloadRecordingData
+
+طلب العميل (Socket event payload):
+
+```json
+{
+  "recordingId": "rec-123456",
+  "chunkSizeBytes": 262144
+}
+```
+
+ack أولي من السيرفر على `grpc:result`:
+
+```json
+{
+  "triggerEvent": "grpc:invoke:SignalRecorder.DownloadRecordingData",
+  "service": "SignalRecorder",
+  "method": "DownloadRecordingData",
+  "result": {
+    "mode": "server-stream",
+    "streamKey": "signal_recorder.v1.SignalRecorder.DownloadRecordingData:{\"recordingId\":\"rec-123456\",\"chunkSizeBytes\":262144}",
+    "status": "started",
+    "eventName": "SignalRecorder.DownloadRecordingData"
+  }
+}
+```
+
+بعدها يبدأ stream على `SignalRecorder.DownloadRecordingData` بشكل chunks:
+
+أول رسالة (metadata):
+
+```json
+{
+  "metadata": {
+    "filename": "rec-123456.sigmf-data",
+    "totalSizeBytes": "10485760",
+    "sha256Hex": "ab12...",
+    "output": "OUTPUT_FORMAT_IQ_INT8"
+  }
+}
+```
+
+رسائل الداتا التالية (base64 أو binary حسب إعداد bytes handling على المسار):
+
+```json
+{
+  "data": "AAECAwQFBgcI..."
+}
+```
+
+### 7.2) grpc:invoke:SignalRecorder.DownloadRecordingMeta
+
+طلب العميل (Socket event payload):
+
+```json
+{
+  "recordingId": "rec-123456",
+  "chunkSizeBytes": 65536
+}
+```
+
+ack أولي من السيرفر على `grpc:result`:
+
+```json
+{
+  "triggerEvent": "grpc:invoke:SignalRecorder.DownloadRecordingMeta",
+  "service": "SignalRecorder",
+  "method": "DownloadRecordingMeta",
+  "result": {
+    "mode": "server-stream",
+    "streamKey": "signal_recorder.v1.SignalRecorder.DownloadRecordingMeta:{\"recordingId\":\"rec-123456\",\"chunkSizeBytes\":65536}",
+    "status": "started",
+    "eventName": "SignalRecorder.DownloadRecordingMeta"
+  }
+}
+```
+
+ثم stream على `SignalRecorder.DownloadRecordingMeta`:
+
+أول رسالة (metadata):
+
+```json
+{
+  "metadata": {
+    "filename": "rec-123456.sigmf-meta",
+    "totalSizeBytes": "4096",
+    "sha256Hex": "cd34...",
+    "output": "OUTPUT_FORMAT_IQ_INT8"
+  }
+}
+```
+
+رسائل الداتا (JSON sidecar bytes):
+
+```json
+{
+  "data": "ewogICJnbG9iYWwiOiB7IC4uLiB9Cn0="
+}
+```
+
+### 7.3) ملاحظات توافق مهمة
+
+1. الأحداث الجديدة متاحة الآن في `grpc:methods` تلقائياً.
+2. اسم response event يجب أن يطابق method بالضبط:
+   - `SignalRecorder.DownloadRecordingData`
+   - `SignalRecorder.DownloadRecordingMeta`
+3. إذا كان التسجيل WAV قد يرجع backend خطأ `FAILED_PRECONDITION` لأن split data/meta خاص بتسجيلات IQ حسب تعريف الـ proto.
 
 ### بدء كشف الطائرات
 

@@ -13,6 +13,12 @@ service SignalRecorder {
   rpc DeleteRecording (DeleteRecordingRequest) returns (DeleteRecordingResponse);
   rpc WatchRecording  (WatchRecordingRequest)  returns (stream RecordingEvent);
   rpc DownloadRecording (DownloadRecordingRequest) returns (stream DownloadRecordingChunk);
+  // IQ recordings only (Spec 005 §5.1): stream just the raw .sigmf-data
+  // sample file, or just the .sigmf-meta JSON sidecar, instead of the
+  // combined .sigmf archive DownloadRecording returns. WAV recordings have
+  // no such split (audio + header live in one file) — FAILED_PRECONDITION.
+  rpc DownloadRecordingData (DownloadRecordingRequest) returns (stream DownloadRecordingChunk);
+  rpc DownloadRecordingMeta (DownloadRecordingRequest) returns (stream DownloadRecordingChunk);
 }
 
 // ─────────── Enums ───────────

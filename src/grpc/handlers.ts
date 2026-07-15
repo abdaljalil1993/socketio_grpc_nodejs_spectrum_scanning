@@ -225,6 +225,19 @@ export const createGrpcGateway = ({
     string,
     { metadata: ActiveStream; delivery: StreamDeliveryState; call: ClientReadableStream<unknown> }
   >();
+  const streamRetryCounts = new Map<string, number>();
+  const firstFrameTimers = new Map<string, NodeJS.Timeout>();
+
+  const clearFirstFrameTimer = (streamKey: string): void => {
+    const timer = firstFrameTimers.get(streamKey);
+
+    if (!timer) {
+      return;
+    }
+
+    clearTimeout(timer);
+    firstFrameTimers.delete(streamKey);
+  };
 
   const resolveMethod = (serviceName: string, methodName: string): { service: GatewayServiceClient; method: GatewayMethodClient } => {
     const service = clients.getService(serviceName);
@@ -243,7 +256,7 @@ export const createGrpcGateway = ({
   };
 
   const normalizeResponsePayload = (payload: unknown, responseType: string): unknown => {
-    if (responseType === 'sdr_ingestion.v2.SweepTrace') {
+    if (responseType === 'sdr_ingestion.v2.SweepTrace' && env.SOCKET_SWEEP_BINARY_PAYLOAD) {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         return payload;
       }
@@ -387,6 +400,39 @@ export const createGrpcGateway = ({
     }
   };
 
+  const isTransientStreamError = (error: ServiceError): boolean => {
+    if (error.code === grpcStatus.UNAVAILABLE) {
+      return true;
+    }
+
+    const details = `${error.details ?? ''} ${error.message ?? ''}`;
+    return /ECONNRESET|UNAVAILABLE/i.test(details);
+  };
+
+  const emitNoDataTimeoutError = (
+    service: GatewayServiceClient,
+    method: GatewayMethodClient,
+    delivery: StreamDeliveryState,
+    timeoutMs: number,
+  ): void => {
+    const payload = {
+      triggerEvent: `grpc:invoke:${service.definition.serviceName}.${method.definition.methodName}`,
+      service: service.definition.serviceName,
+      method: method.definition.methodName,
+      statusCode: 504,
+      message: `No stream data received within ${timeoutMs}ms after recovery retries`,
+      serviceTarget: service.target
+    };
+
+    if (delivery.broadcast) {
+      emitter.emit(SOCKET_ERROR_EVENT, payload);
+    }
+
+    for (const room of delivery.targetRooms) {
+      emitter.emit(SOCKET_ERROR_EVENT, payload, { room });
+    }
+  };
+
   const startServerStream = (
     service: GatewayServiceClient,
     method: GatewayMethodClient,
@@ -400,15 +446,46 @@ export const createGrpcGateway = ({
     const existingStream = activeStreams.get(streamKey);
 
     if (existingStream) {
+      const wasTargetedToCaller = Boolean(targetRoom && existingStream.delivery.targetRooms.has(targetRoom));
+
       if (targetRoom) {
         existingStream.delivery.targetRooms.add(targetRoom);
       }
 
-      return {
-        streamKey,
-        status: 'already-active',
-        eventName: method.definition.eventName
-      };
+      // If the same API caller re-invokes the same stream key and that stream is
+      // targeted only to this caller, restart it to recover from a stale server stream.
+      const shouldRestartForCaller =
+        source === 'api' &&
+        Boolean(targetRoom) &&
+        wasTargetedToCaller &&
+        !existingStream.delivery.broadcast &&
+        existingStream.delivery.targetRooms.size === 1;
+
+      if (shouldRestartForCaller) {
+        logger.warn(
+          {
+            streamKey,
+            serviceName: existingStream.metadata.serviceName,
+            methodName: existingStream.metadata.methodName,
+            room: targetRoom
+          },
+          'Restarting already-active stream for caller',
+        );
+
+        activeStreams.delete(streamKey);
+
+        try {
+          existingStream.call.cancel();
+        } catch {
+          // ignore cancellation errors during restart path
+        }
+      } else {
+        return {
+          streamKey,
+          status: 'already-active',
+          eventName: method.definition.eventName
+        };
+      }
     }
 
     const call = (service.client as any)[method.clientMethodName](parsedPayload) as ClientReadableStream<unknown>;
@@ -430,6 +507,102 @@ export const createGrpcGateway = ({
 
     activeStreams.set(streamKey, { metadata, delivery, call });
 
+    const shouldWatchFirstSweepFrame =
+      source === 'api' && service.definition.serviceName === 'SpectrumStream' && method.definition.methodName === 'SubscribeSweep';
+
+    if (shouldWatchFirstSweepFrame) {
+      clearFirstFrameTimer(streamKey);
+
+      const timer = setTimeout(() => {
+        const currentStream = activeStreams.get(streamKey);
+
+        if (!currentStream) {
+          return;
+        }
+
+        const retryCount = streamRetryCounts.get(streamKey) ?? 0;
+
+        if (retryCount >= env.GRPC_STREAM_RECOVERY_RETRIES) {
+          logger.error(
+            {
+              streamKey,
+              serviceName: service.definition.serviceName,
+              methodName: method.definition.methodName,
+              timeoutMs: env.GRPC_STREAM_FIRST_FRAME_TIMEOUT_MS,
+              retries: retryCount
+            },
+            'No first sweep frame received after all retries',
+          );
+
+          activeStreams.delete(streamKey);
+          streamRetryCounts.delete(streamKey);
+          clearFirstFrameTimer(streamKey);
+          emitNoDataTimeoutError(service, method, currentStream.delivery, env.GRPC_STREAM_FIRST_FRAME_TIMEOUT_MS);
+
+          try {
+            currentStream.call.cancel();
+          } catch {
+            // ignore cancellation errors during timeout path
+          }
+
+          return;
+        }
+
+        streamRetryCounts.set(streamKey, retryCount + 1);
+
+        const { payload: retryPayload, source: retrySource } = currentStream.metadata;
+        const retryRooms = [...currentStream.delivery.targetRooms];
+        const retryBroadcast = currentStream.delivery.broadcast;
+
+        activeStreams.delete(streamKey);
+
+        try {
+          currentStream.call.cancel();
+        } catch {
+          // ignore cancellation errors during recovery path
+        }
+
+        logger.warn(
+          {
+            streamKey,
+            serviceName: service.definition.serviceName,
+            methodName: method.definition.methodName,
+            timeoutMs: env.GRPC_STREAM_FIRST_FRAME_TIMEOUT_MS,
+            retryCount: retryCount + 1
+          },
+          'No first sweep frame received within timeout, retrying stream once',
+        );
+
+        try {
+          if (retryBroadcast) {
+            startServerStream(service, method, retryPayload, retrySource);
+            return;
+          }
+
+          if (retryRooms.length === 0) {
+            startServerStream(service, method, retryPayload, retrySource);
+            return;
+          }
+
+          for (const room of retryRooms) {
+            startServerStream(service, method, retryPayload, retrySource, room);
+          }
+        } catch (restartError) {
+          logger.error(
+            {
+              streamKey,
+              serviceName: service.definition.serviceName,
+              methodName: method.definition.methodName,
+              restartError
+            },
+            'Failed to restart stream after first-frame timeout',
+          );
+        }
+      }, env.GRPC_STREAM_FIRST_FRAME_TIMEOUT_MS);
+
+      firstFrameTimers.set(streamKey, timer);
+    }
+
     logger.info(
       { streamKey, serviceName: metadata.serviceName, methodName: metadata.methodName, source },
       'gRPC stream subscribed',
@@ -442,22 +615,111 @@ export const createGrpcGateway = ({
         return;
       }
 
+      if (currentStream.call !== call) {
+        return;
+      }
+
+      // Stream is healthy again once data flows; allow a future transient retry.
+      streamRetryCounts.delete(streamKey);
+      clearFirstFrameTimer(streamKey);
+
       emitValidatedMessage(service, method, message, currentStream.delivery);
     });
 
     call.on('error', (error: ServiceError) => {
       const currentStream = activeStreams.get(streamKey);
 
+      if (currentStream && currentStream.call !== call) {
+        return;
+      }
+
+      const retryCount = streamRetryCounts.get(streamKey) ?? 0;
+      const shouldRetry =
+        Boolean(currentStream) &&
+        isTransientStreamError(error) &&
+        retryCount < env.GRPC_STREAM_RECOVERY_RETRIES;
+
+      if (shouldRetry && currentStream) {
+        streamRetryCounts.set(streamKey, retryCount + 1);
+
+        const { payload: retryPayload, source: retrySource } = currentStream.metadata;
+        const retryRooms = [...currentStream.delivery.targetRooms];
+        const retryBroadcast = currentStream.delivery.broadcast;
+
+        activeStreams.delete(streamKey);
+
+        try {
+          currentStream.call.cancel();
+        } catch {
+          // ignore cancellation errors during recovery path
+        }
+
+        logger.warn(
+          {
+            streamKey,
+            serviceName: service.definition.serviceName,
+            methodName: method.definition.methodName,
+            retryCount: retryCount + 1,
+            errorCode: error.code,
+            errorMessage: error.message,
+            errorDetails: error.details
+          },
+          'Transient gRPC stream error detected, retrying stream once',
+        );
+
+        clearFirstFrameTimer(streamKey);
+
+        setTimeout(() => {
+          try {
+            if (retryBroadcast) {
+              startServerStream(service, method, retryPayload, retrySource);
+              return;
+            }
+
+            if (retryRooms.length === 0) {
+              startServerStream(service, method, retryPayload, retrySource);
+              return;
+            }
+
+            for (const room of retryRooms) {
+              startServerStream(service, method, retryPayload, retrySource, room);
+            }
+          } catch (restartError) {
+            logger.error(
+              {
+                streamKey,
+                serviceName: service.definition.serviceName,
+                methodName: method.definition.methodName,
+                restartError
+              },
+              'Failed to restart stream after transient error',
+            );
+          }
+        }, 300);
+
+        return;
+      }
+
       if (currentStream) {
         emitStreamError(service, method, error, currentStream.delivery);
       }
 
       activeStreams.delete(streamKey);
+      streamRetryCounts.delete(streamKey);
+      clearFirstFrameTimer(streamKey);
       logger.error({ streamKey, error }, 'gRPC stream error');
     });
 
     call.on('end', () => {
+      const currentStream = activeStreams.get(streamKey);
+
+      if (currentStream && currentStream.call !== call) {
+        return;
+      }
+
       activeStreams.delete(streamKey);
+      streamRetryCounts.delete(streamKey);
+      clearFirstFrameTimer(streamKey);
       logger.info({ streamKey }, 'gRPC stream ended');
     });
 
