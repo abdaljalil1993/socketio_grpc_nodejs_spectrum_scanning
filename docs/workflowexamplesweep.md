@@ -304,3 +304,254 @@ for (const room of delivery.targetRooms) {
 
 ## حدود التوثيق
 هذا الملف يوثق كل السطور المنفذة داخل هذا الريبو. أما التنفيذ الداخلي لخدمة SDR/gRPC التي تتعامل مع الهاردوير نفسه فهو خارج هذا المشروع ولا يمكن توثيقه بأسطر من هنا.
+
+---
+
+## نسخة نصية رسومية بدون روابط (للقراءة على GitHub حتى لو الروابط لا تعمل)
+
+مهم: في هذا القسم سنستخدم صيغة ثابتة:
+1. File:Line = مكان التنفيذ الحالي.
+2. ثم سهم -> إلى File:Line التالي.
+3. تحت كل خطوة: ماذا حدث؟ وما النتيجة؟
+
+### A) OpenDevice كأنه قصة لطفل (خطوة بعد خطوة)
+
+المشهد العام:
+Client Socket Event
+-> src/socket/index.ts:105
+-> src/socket/index.ts:127
+-> src/socket/index.ts:72
+-> src/socket/index.ts:74
+-> src/grpc/handlers.ts:522
+-> src/grpc/handlers.ts:523
+-> src/grpc/handlers.ts:230
+-> src/grpc/handlers.ts:236
+-> src/grpc/handlers.ts:525
+-> src/grpc/handlers.ts:526
+-> src/grpc/handlers.ts:143
+-> src/grpc/handlers.ts:150
+-> src/grpc/handlers.ts:547
+-> src/grpc/handlers.ts:573
+-> src/grpc/handlers.ts:345
+-> src/grpc/handlers.ts:353
+-> src/socket/emitter.ts:28
+-> src/socket/index.ts:76
+-> Client receives result
+
+الشرح التفصيلي البسيط:
+1. File: src/socket/index.ts  Line: 105
+الحدث العام grpc:invoke يصل للسيرفر.
+النتيجة: السيرفر بدأ قراءة الرسالة.
+
+2. File: src/socket/index.ts  Line: 115
+الرسالة تتحول إلى request (service/method/payload/requestId).
+النتيجة: صار عندنا شكل موحد للطلب.
+
+3. File: src/socket/index.ts  Line: 127
+ينادي handleInvoke(request).
+النتيجة: دخلنا مرحلة التنفيذ الفعلي.
+
+4. File: src/socket/index.ts  Line: 72
+هنا تعريف handleInvoke.
+النتيجة: هذا هو "الممر" الذي يرسل الطلب نحو gateway.
+
+5. File: src/socket/index.ts  Line: 74
+ينفذ gateway.invoke(service, method, payload, { targetRoom: socket.id }).
+النتيجة: الطلب خرج من socket layer ودخل gRPC gateway layer.
+
+6. File: src/grpc/handlers.ts  Line: 522
+بدأ invoke داخل gateway.
+النتيجة: gateway استلم اسم الخدمة والطريقة والـ payload.
+
+7. File: src/grpc/handlers.ts  Line: 523
+ينادي resolveMethod(serviceName, methodName).
+النتيجة: البحث عن الخدمة والطريقة الفعلية.
+
+8. File: src/grpc/handlers.ts  Line: 230
+يجلب service من clients map.
+النتيجة: عرف أي gRPC client سيستخدم.
+
+9. File: src/grpc/handlers.ts  Line: 236
+يجلب method داخل service.
+النتيجة: عرف أي RPC function سيستدعي.
+
+10. File: src/grpc/handlers.ts  Line: 525
+يفحص: هل الطريقة Unary؟
+النتيجة: OpenDevice = نعم Unary، إذن نكمل بهذا الفرع.
+
+11. File: src/grpc/handlers.ts  Line: 526
+ينفذ validateRequestWithSchema.
+النتيجة: حماية من payload غير صحيح.
+
+12. File: src/grpc/handlers.ts  Line: 143
+يجلب schema المناسب من schemaRegistry.
+النتيجة: عرف قواعد التحقق.
+
+13. File: src/grpc/handlers.ts  Line: 150
+safeParse للـ payload.
+النتيجة: إذا صحيح يكمل، إذا خطأ يرمي GatewayError.
+
+14. File: src/grpc/handlers.ts  Line: 547
+ينفذ استدعاء gRPC الحقيقي على service.client[method.clientMethodName].
+النتيجة: الطلب خرج للخدمة الخارجية (hardware backend).
+
+15. File: src/grpc/handlers.ts  Line: 573
+بعد رجوع الرد، يمر عبر emitValidatedMessage.
+النتيجة: تجهيز الرد للبث على السوكت.
+
+16. File: src/grpc/handlers.ts  Line: 345
+normalizeResponsePayload ثم validateResponseWithSchema.
+النتيجة: الرد صار جاهز للإرسال النهائي.
+
+17. File: src/grpc/handlers.ts  Line: 353
+emitter.emit(eventName, payload, { room }).
+النتيجة: حدد أن الإرسال موجه لغرفة هذا العميل فقط.
+
+18. File: src/socket/emitter.ts  Line: 28
+io.to(room).emit(eventName, payload).
+النتيجة: حدث DeviceControl.OpenDevice وصل فعليا للعميل.
+
+19. File: src/socket/index.ts  Line: 76
+socket.emit(grpc:result, wrapper).
+النتيجة: العميل يستلم أيضا نتيجة مغلفة باسم grpc:result.
+
+الخلاصة البسيطة لـ OpenDevice:
+1. العميل غالبا يرى رسالتين:
+grpc:result
+DeviceControl.OpenDevice
+2. session_id يأتي من خدمة gRPC الخارجية، تعريفه في proto موجود عند src/proto/sdr.proto:284.
+
+---
+
+### B) SubscribeSweep كأنه قصة لطفل (خطوة بعد خطوة)
+
+المشهد العام:
+Client Socket Event
+-> src/socket/index.ts:139 (حدث خاص) أو 105 (حدث عام)
+-> src/socket/index.ts:74
+-> src/grpc/handlers.ts:522
+-> src/grpc/handlers.ts:523
+-> src/grpc/handlers.ts:230
+-> src/grpc/handlers.ts:236
+-> src/grpc/handlers.ts:585
+-> src/grpc/handlers.ts:586
+-> src/grpc/handlers.ts:390
+-> src/grpc/handlers.ts:396
+-> src/grpc/handlers.ts:397
+-> src/grpc/handlers.ts:414
+-> src/grpc/handlers.ts:427
+-> src/grpc/handlers.ts:438 (يتكرر لكل رسالة)
+-> src/grpc/handlers.ts:445
+-> src/grpc/handlers.ts:345
+-> src/grpc/handlers.ts:245
+-> src/grpc/handlers.ts:252
+-> src/grpc/handlers.ts:346
+-> src/grpc/handlers.ts:353
+-> src/socket/emitter.ts:28
+-> Client receives SpectrumStream.SubscribeSweep repeatedly
+
+الشرح التفصيلي البسيط:
+1. File: src/socket/index.ts  Line: 139
+إذا أرسلت الحدث الخاص grpc:invoke:SpectrumStream.SubscribeSweep، يبدأ من هنا.
+النتيجة: يجهز request ثم ينادي handleInvoke.
+
+2. File: src/socket/index.ts  Line: 105
+إذا أرسلت الحدث العام grpc:invoke، يبدأ من هنا.
+النتيجة: نفس النهاية، سيصل إلى handleInvoke.
+
+3. File: src/socket/index.ts  Line: 74
+gateway.invoke(...).
+النتيجة: الانتقال من socket إلى gRPC gateway.
+
+4. File: src/grpc/handlers.ts  Line: 522
+invoke بدأ داخل gateway.
+النتيجة: بدأ تحديد مسار التنفيذ.
+
+5. File: src/grpc/handlers.ts  Line: 523
+resolveMethod.
+النتيجة: تحديد service + method الصحيحين.
+
+6. File: src/grpc/handlers.ts  Line: 230
+يجلب service.
+النتيجة: عرف أي client سيكلم.
+
+7. File: src/grpc/handlers.ts  Line: 236
+يجلب method.
+النتيجة: عرف أي RPC function.
+
+8. File: src/grpc/handlers.ts  Line: 585
+يفحص: هل Server Stream؟
+النتيجة: SubscribeSweep = نعم، ندخل فرع stream.
+
+9. File: src/grpc/handlers.ts  Line: 586
+startServerStream(service, method, payload, 'api', targetRoom).
+النتيجة: بدء اشتراك stream.
+
+10. File: src/grpc/handlers.ts  Line: 390
+تعريف startServerStream.
+النتيجة: هنا إدارة stream lifecycle كاملة.
+
+11. File: src/grpc/handlers.ts  Line: 396
+validateRequestWithSchema.
+النتيجة: التحقق من SubscribeSweepRequest.
+
+12. File: src/grpc/handlers.ts  Line: 397
+توليد streamKey فريد.
+النتيجة: تمييز هذا الاشتراك عن غيره.
+
+13. File: src/grpc/handlers.ts  Line: 414
+فتح gRPC stream call الفعلي.
+النتيجة: الاتصال بالخدمة الخارجية صار streaming.
+
+14. File: src/grpc/handlers.ts  Line: 427
+activeStreams.set(...).
+النتيجة: حفظ stream في الذاكرة لإدارته لاحقا.
+
+15. File: src/grpc/handlers.ts  Line: 438
+call.on('data', message => ...).
+النتيجة: كل رسالة SweepTrace جديدة تمر من هنا (تتكرر كثيرا).
+
+16. File: src/grpc/handlers.ts  Line: 445
+emitValidatedMessage(...).
+النتيجة: تجهيز الرسالة قبل بثها.
+
+17. File: src/grpc/handlers.ts  Line: 345
+normalizeResponsePayload يبدأ.
+النتيجة: معالجة خاصة بنوع الرسالة.
+
+18. File: src/grpc/handlers.ts  Line: 245
+فرع sdr_ingestion.v2.SweepTrace.
+النتيجة: عرف أن هذه رسالة SweepTrace.
+
+19. File: src/grpc/handlers.ts  Line: 252
+toBinaryBuffer(sweep['powersDbm']).
+النتيجة: تحويل powersDbm إلى Binary Buffer.
+
+20. File: src/grpc/handlers.ts  Line: 346
+validateResponseWithSchema بعد التطبيع.
+النتيجة: التحقق النهائي قبل البث.
+
+21. File: src/grpc/handlers.ts  Line: 353
+emitter.emit(eventName, payload, { room }).
+النتيجة: إرسال الرسالة لغرفة العميل.
+
+22. File: src/socket/emitter.ts  Line: 28
+io.to(room).emit(...).
+النتيجة: رسالة SpectrumStream.SubscribeSweep خرجت فعليا للعميل.
+
+الخلاصة البسيطة لـ SubscribeSweep:
+1. grpc:result من src/socket/index.ts:76 = فقط تأكيد بدء الاشتراك.
+2. الداتا الحقيقية المتكررة تأتي من on(data) في src/grpc/handlers.ts:438 وتخرج كأحداث SpectrumStream.SubscribeSweep.
+
+---
+
+## خريطة رسومية سريعة جدا (ASCII)
+
+OpenDevice:
+Client -> socket/index.ts:105 -> socket/index.ts:74 -> grpc/handlers.ts:525 -> grpc/handlers.ts:547
+-> grpc/handlers.ts:573 -> grpc/handlers.ts:353 -> socket/emitter.ts:28 -> Client
+
+SubscribeSweep:
+Client -> socket/index.ts:139 -> socket/index.ts:74 -> grpc/handlers.ts:585 -> grpc/handlers.ts:586
+-> grpc/handlers.ts:414 -> grpc/handlers.ts:438(loop)
+-> grpc/handlers.ts:252 -> grpc/handlers.ts:353 -> socket/emitter.ts:28 -> Client(loop)
