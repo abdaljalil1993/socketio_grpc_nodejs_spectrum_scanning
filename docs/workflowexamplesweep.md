@@ -146,6 +146,30 @@ if (options?.room) {
 13. في [src/socket/emitter.ts](src/socket/emitter.ts#L28) يتم io.to(room).emit فعليا للعميل نفسه.
 14. بالتوازي، socket layer يعيد wrapper نتيجة الاستدعاء على grpc:result في [src/socket/index.ts](src/socket/index.ts#L76).
 
+### مسار التنقل الحرفي للمبتدئ (OpenDevice)
+اتبع هذه الخطوات بنفس الترتيب، ولا تنتقل للخطوة التالية قبل التأكد من الحالية:
+1. اذهب إلى [src/socket/index.ts](src/socket/index.ts#L105). هذا أول listener يستقبل grpc:invoke.
+2. أرسل حدث OpenDevice من العميل. توقف هنا وتأكد أن message وصل لهذا السطر.
+3. انزل إلى [src/socket/index.ts](src/socket/index.ts#L115). هنا يتم تحويل الرسالة إلى request.
+4. انزل إلى [src/socket/index.ts](src/socket/index.ts#L127). هنا يتم استدعاء handleInvoke.
+5. اقفز إلى [src/socket/index.ts](src/socket/index.ts#L72). هذا تعريف handleInvoke نفسه.
+6. تحرك إلى [src/socket/index.ts](src/socket/index.ts#L74). هنا يحصل الدخول الحقيقي إلى gateway.invoke.
+7. اقفز الآن إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L522). هذا مدخل invoke داخل gateway.
+8. تحرك إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L523). هنا resolveMethod يأخذ serviceName وmethodName.
+9. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L230). هنا يجلب service من clients.
+10. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L236). هنا يجلب method داخل service.
+11. ارجع إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L525). هنا التفرع: هل الطريقة Unary.
+12. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L526). هنا يبدأ validateRequestWithSchema.
+13. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L143). هنا يتم أخذ schema من schemaRegistry.
+14. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L150). هنا safeParse للـ payload.
+15. ارجع إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L547). هنا gRPC unary call الفعلي.
+16. بعد رجوع result، تحرك إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L573). هنا يتم تمرير الرد إلى emitValidatedMessage.
+17. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L345). هنا normalizeResponsePayload ثم validateResponseWithSchema.
+18. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L353). هنا emit للغرفة المستهدفة.
+19. اقفز إلى [src/socket/emitter.ts](src/socket/emitter.ts#L28). هنا Socket.IO يرسل الحدث فعليا للعميل.
+20. ارجع إلى [src/socket/index.ts](src/socket/index.ts#L76). هنا يرجع grpc:result (النتيجة المغلفة).
+21. النتيجة النهائية عند العميل تكون حدثين: grpc:result وDeviceControl.OpenDevice.
+
 ---
 
 ## Workflow 2: حدث SubscribeSweep كـ Socket Event
@@ -238,6 +262,31 @@ for (const room of delivery.targetRooms) {
 13. في [src/grpc/handlers.ts](src/grpc/handlers.ts#L353) يتم emit حدث SpectrumStream.SubscribeSweep لغرفة العميل.
 14. التنفيذ النهائي على Socket.IO يتم في [src/socket/emitter.ts](src/socket/emitter.ts#L28).
 15. اسم الحدث SpectrumStream.SubscribeSweep يأتي من registry في [src/grpc/registry.ts](src/grpc/registry.ts#L300).
+
+### مسار التنقل الحرفي للمبتدئ (SubscribeSweep)
+اتبع هذه الخطوات بنفس الترتيب. هذا المسار stream وليس unary:
+1. اذهب إلى [src/socket/index.ts](src/socket/index.ts#L139) إذا كنت تستخدم الحدث الخاص grpc:invoke:SpectrumStream.SubscribeSweep.
+2. أو ابدأ من [src/socket/index.ts](src/socket/index.ts#L105) إذا كنت تستخدم الحدث العام grpc:invoke.
+3. في الحالتين، تأكد أن التنفيذ يصل إلى [src/socket/index.ts](src/socket/index.ts#L74) عند gateway.invoke.
+4. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L522) ثم إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L523).
+5. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L230) ثم [src/grpc/handlers.ts](src/grpc/handlers.ts#L236) لتأكيد resolve.
+6. ارجع إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L585). هنا يتم تمييز الطريقة كـ server-stream.
+7. انتقل مباشرة إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L586). هنا يبدأ startServerStream.
+8. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L390). هذا تعريف startServerStream.
+9. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L396). هنا validateRequestWithSchema لطلب SubscribeSweep.
+10. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L397). هنا streamKey يتم توليده.
+11. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L414). هنا يتم فتح gRPC stream call.
+12. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L427). هنا يتم تخزين stream في activeStreams.
+13. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L438). هنا listener data لكل رسالة SweepTrace.
+14. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L445). هنا كل رسالة تدخل emitValidatedMessage.
+15. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L345). هنا يبدأ normalizeResponsePayload.
+16. اقفز إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L245). هذا تعريف normalizeResponsePayload.
+17. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L252). هنا powersDbm يتحول إلى Binary Buffer.
+18. ارجع إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L346). هنا validateResponseWithSchema بعد التطبيع.
+19. انزل إلى [src/grpc/handlers.ts](src/grpc/handlers.ts#L353). هنا يتم emit لحدث SpectrumStream.SubscribeSweep.
+20. اقفز إلى [src/socket/emitter.ts](src/socket/emitter.ts#L28). هنا النقل النهائي إلى العميل.
+21. تأكد من اسم الحدث في [src/grpc/registry.ts](src/grpc/registry.ts#L300).
+22. تذكر أن grpc:result من [src/socket/index.ts](src/socket/index.ts#L76) هو رد بدء الاشتراك فقط، أما الداتا الفعلية فتأتي لاحقا من callback data.
 
 ---
 
