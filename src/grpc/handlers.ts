@@ -137,7 +137,7 @@ const toBinaryBuffer = (value: unknown): Buffer | undefined => {
   }
 
   return undefined;
-};
+}; 
 
 const validateRequestWithSchema = (typeName: string, payload: unknown, logger: Logger) => {
   const schema = schemaRegistry[typeName];
@@ -355,18 +355,18 @@ export const createGrpcGateway = ({
     );
 
     try {
-      const normalizedPayload = normalizeResponsePayload(payload, method.definition.responseType);
-      const validatedPayload = validateResponseWithSchema(method.definition.responseType, normalizedPayload, logger);
+      const validatedPayload = validateResponseWithSchema(method.definition.responseType, payload, logger);
+      const normalizedPayload = normalizeResponsePayload(validatedPayload, method.definition.responseType);
 
       if (delivery.broadcast) {
-        emitter.emit(method.definition.eventName, validatedPayload);
+        emitter.emit(method.definition.eventName, normalizedPayload);
       }
 
       for (const room of delivery.targetRooms) {
-        emitter.emit(method.definition.eventName, validatedPayload, { room });
+        emitter.emit(method.definition.eventName, normalizedPayload, { room });
       }
 
-      return validatedPayload;
+      return normalizedPayload;
     } catch (error) {
       if (error instanceof GatewayError) {
         return undefined;

@@ -2,9 +2,12 @@ import pino from 'pino';
 
 import { env } from '../config/env';
 
+const effectiveLogLevel =
+  env.NODE_ENV === 'production' && env.LOG_ONLY_ERRORS_IN_PRODUCTION ? 'error' : env.LOG_LEVEL;
+
 export const logger = pino({
   name: 'grpc-socket-gateway',
-  level: env.LOG_LEVEL,
+  level: effectiveLogLevel,
   base: {
     service: 'grpc-socket-gateway'
   },

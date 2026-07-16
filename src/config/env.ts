@@ -41,6 +41,7 @@ const baseEnvSchema = z.object({
   GRPC_STREAM_FIRST_FRAME_TIMEOUT_MS: numberFromEnv(10000),
   GRPC_STREAM_RECOVERY_RETRIES: numberFromEnv(2),
   GRPC_PROTO_DIR: z.string().default('src/proto'),
+  LOG_ONLY_ERRORS_IN_PRODUCTION: booleanFromEnv(true),
   SOCKET_SWEEP_BINARY_PAYLOAD: booleanFromEnv(false),
   RECORDS_STORAGE_DIR: z.string().default('storage/iq-files'),
   SOCKET_PATH: z.string().default('/socket.io'),
