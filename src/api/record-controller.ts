@@ -68,6 +68,7 @@ const createSignalRecordSchema = z.object({
   lastSeen: z.coerce.date().optional(),
   patternType: z.string().min(1).optional(),
   spectrumImage: z.string().min(1).optional(),
+  waterfallImage: z.string().min(1).optional(),
   extensions: optionalRecord,
   notes: z.string().min(1).optional()
 });
@@ -79,6 +80,19 @@ const uuidParamSchema = z.object({
 type SignalRecordWithFile = SignalRecord & {
   iqFile: string;
 };
+
+type UploadedRecordFiles = Partial<Record<'iqFile' | 'spectrumImage' | 'waterfallImage', Express.Multer.File[]>>;
+
+const getUploadedRecordFiles = (request: Request): UploadedRecordFiles => {
+  if (!request.files || Array.isArray(request.files)) {
+    return {};
+  }
+
+  return request.files as UploadedRecordFiles;
+};
+
+const isImageUpload = (file: Express.Multer.File | undefined): boolean =>
+  Boolean(file && file.mimetype.toLowerCase().startsWith('image/'));
 
 const loadRecordWithSigmf = async (uuid: string) => {
   const service = createSignalRecordService();
@@ -105,6 +119,40 @@ const loadRecordWithSigmf = async (uuid: string) => {
   } as const;
 };
 
+const loadRecordWithImage = async (uuid: string, imageType: 'spectrum' | 'waterfall') => {
+  const service = createSignalRecordService();
+  const fileStorage = createSignalRecordFileStorage();
+  const record = await service.findByUuid(uuid);
+
+  if (!record) {
+    return {
+      status: 404,
+      message: `Signal record not found for uuid ${uuid}`
+    } as const;
+  }
+
+  const imageFileName = imageType === 'spectrum' ? record.spectrumImage : record.waterfallImage;
+
+  if (!imageFileName) {
+    return {
+      status: 404,
+      message: `${imageType} image not found for uuid ${uuid}`
+    } as const;
+  }
+
+  if (!(await fileStorage.imageExists(imageFileName))) {
+    return {
+      status: 404,
+      message: `Stored ${imageType} image not found for uuid ${uuid}`
+    } as const;
+  }
+
+  return {
+    fileStorage,
+    imageFileName
+  } as const;
+};
+
 export const createSignalRecordController = () => {
   const service = createSignalRecordService();
   const fileStorage = createSignalRecordFileStorage();
@@ -113,25 +161,67 @@ export const createSignalRecordController = () => {
     async create(request: Request, response: Response): Promise<void> {
       const payload = createSignalRecordSchema.parse(request.body ?? {});
       const uuid = payload.uuid ?? randomUUID();
-      const uploadedFileName = request.file ? fileStorage.createDataFileName(uuid, request.file.originalname) : payload.iqFile;
-      let record = await service.create({
+      const files = getUploadedRecordFiles(request);
+      const iqFile = files.iqFile?.[0];
+      const spectrumImageFile = files.spectrumImage?.[0];
+      const waterfallImageFile = files.waterfallImage?.[0];
+
+      if (spectrumImageFile && !isImageUpload(spectrumImageFile)) {
+        response.status(400).json({ message: 'spectrumImage must be a valid image file' });
+        return;
+      }
+
+      if (waterfallImageFile && !isImageUpload(waterfallImageFile)) {
+        response.status(400).json({ message: 'waterfallImage must be a valid image file' });
+        return;
+      }
+
+      const uploadedFileName = iqFile ? fileStorage.createDataFileName(uuid, iqFile.originalname) : payload.iqFile;
+      const uploadedSpectrumImageFileName = spectrumImageFile
+        ? fileStorage.createImageFileName(uuid, 'spectrum', spectrumImageFile.originalname)
+        : payload.spectrumImage;
+      const uploadedWaterfallImageFileName = waterfallImageFile
+        ? fileStorage.createImageFileName(uuid, 'waterfall', waterfallImageFile.originalname)
+        : payload.waterfallImage;
+
+      const record = await service.create({
         ...payload,
         uuid,
-        iqFile: uploadedFileName
+        iqFile: uploadedFileName,
+        spectrumImage: uploadedSpectrumImageFileName,
+        waterfallImage: uploadedWaterfallImageFileName
       });
 
-      if (request.file) {
-        try {
-          const dataFileName = uploadedFileName ?? fileStorage.createDataFileName(uuid, request.file.originalname);
-          const metadataContent = createSigmfMetadata(record, dataFileName, request.file.buffer);
-          await fileStorage.save(dataFileName, request.file.buffer, metadataContent);
-        } catch (error) {
-          await service.deleteByUuid(record.uuid);
-          if (uploadedFileName) {
-            await fileStorage.remove(uploadedFileName);
-          }
-          throw error;
+      try {
+        if (iqFile) {
+          const dataFileName = uploadedFileName ?? fileStorage.createDataFileName(uuid, iqFile.originalname);
+          const metadataContent = createSigmfMetadata(record, dataFileName, iqFile.buffer);
+          await fileStorage.save(dataFileName, iqFile.buffer, metadataContent);
         }
+
+        if (spectrumImageFile && uploadedSpectrumImageFileName) {
+          await fileStorage.saveImage(uploadedSpectrumImageFileName, spectrumImageFile.buffer);
+        }
+
+        if (waterfallImageFile && uploadedWaterfallImageFileName) {
+          await fileStorage.saveImage(uploadedWaterfallImageFileName, waterfallImageFile.buffer);
+        }
+      } catch (error) {
+        await service.deleteByUuid(record.uuid);
+
+        if (iqFile && uploadedFileName) {
+          await fileStorage.remove(uploadedFileName);
+        }
+
+        if (spectrumImageFile && uploadedSpectrumImageFileName) {
+          await fileStorage.removeImage(uploadedSpectrumImageFileName);
+        }
+
+        if (waterfallImageFile && uploadedWaterfallImageFileName) {
+          await fileStorage.removeImage(uploadedWaterfallImageFileName);
+        }
+
+        throw error;
       }
 
       response.status(201).json({
@@ -139,7 +229,9 @@ export const createSignalRecordController = () => {
         iqFileDownloadUrl: uploadedFileName ? `/records/${record.uuid}/iq-file` : null,
         sigmfDataDownloadUrl: uploadedFileName ? `/records/${record.uuid}/sigmf-data` : null,
         sigmfMetaDownloadUrl: uploadedFileName ? `/records/${record.uuid}/sigmf-meta` : null,
-        sigmfArchiveDownloadUrl: uploadedFileName ? `/records/${record.uuid}/sigmf` : null
+        sigmfArchiveDownloadUrl: uploadedFileName ? `/records/${record.uuid}/sigmf` : null,
+        spectrumImageDownloadUrl: spectrumImageFile ? `/records/${record.uuid}/spectrum-image` : null,
+        waterfallImageDownloadUrl: waterfallImageFile ? `/records/${record.uuid}/waterfall-image` : null
       });
     },
     async findAll(_request: Request, response: Response): Promise<void> {
@@ -212,6 +304,28 @@ export const createSignalRecordController = () => {
         response.destroy(error instanceof Error ? error : new Error('Failed to create SigMF ZIP archive stream'));
       });
       archiveStream.pipe(response);
+    },
+    async downloadSpectrumImage(request: Request, response: Response): Promise<void> {
+      const { uuid } = uuidParamSchema.parse(request.params);
+      const result = await loadRecordWithImage(uuid, 'spectrum');
+
+      if ('status' in result) {
+        response.status(result.status).json({ message: result.message });
+        return;
+      }
+
+      response.sendFile(result.fileStorage.resolveImageFilePath(result.imageFileName));
+    },
+    async downloadWaterfallImage(request: Request, response: Response): Promise<void> {
+      const { uuid } = uuidParamSchema.parse(request.params);
+      const result = await loadRecordWithImage(uuid, 'waterfall');
+
+      if ('status' in result) {
+        response.status(result.status).json({ message: result.message });
+        return;
+      }
+
+      response.sendFile(result.fileStorage.resolveImageFilePath(result.imageFileName));
     }
   };
 };

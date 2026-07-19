@@ -32,6 +32,7 @@ export interface SignalRecord {
   lastSeen: Date | null;
   patternType: string | null;
   spectrumImage: string | null;
+  waterfallImage: string | null;
   extensions: Record<string, unknown> | null;
   notes: string | null;
 }
@@ -197,6 +198,11 @@ export const signalRecordEntity = new EntitySchema<SignalRecord>({
     },
     spectrumImage: {
       name: 'spectrum_image',
+      type: 'text',
+      nullable: true
+    },
+    waterfallImage: {
+      name: 'waterfall_image',
       type: 'text',
       nullable: true
     },

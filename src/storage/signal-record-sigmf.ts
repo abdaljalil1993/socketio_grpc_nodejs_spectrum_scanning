@@ -111,6 +111,7 @@ export const createSigmfMetadata = (record: SignalRecord, dataFileName: string, 
     'app:repeat_count': toInteger(record.repeat),
     'app:pattern_type': record.patternType ?? undefined,
     'app:spectrum_image': record.spectrumImage ?? undefined,
+    'app:waterfall_image': record.waterfallImage ?? undefined,
     'app:notes': record.notes ?? undefined,
     'app:user_extensions': record.extensions ?? undefined
   });

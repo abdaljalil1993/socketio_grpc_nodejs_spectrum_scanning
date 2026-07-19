@@ -119,10 +119,6 @@ Content-Disposition: form-data; name="patternType"
 
 Periodic
 --{{multipartBoundary}}
-Content-Disposition: form-data; name="spectrumImage"
-
-https://example.local/spectrum/001.png
---{{multipartBoundary}}
 Content-Disposition: form-data; name="extensions"
 
 {"source":"rest-client","priority":"high"}
@@ -135,6 +131,16 @@ Content-Disposition: form-data; name="iqFile"; filename="capture_001.iq"
 Content-Type: application/octet-stream
 
 < ./docs/fixtures/capture_001.iq
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="spectrumImage"; filename="spectrum_001.png"
+Content-Type: image/png
+
+< ./docs/fixtures/spectrum_001.png
+--{{multipartBoundary}}
+Content-Disposition: form-data; name="waterfallImage"; filename="waterfall_001.png"
+Content-Type: image/png
+
+< ./docs/fixtures/waterfall_001.png
 --{{multipartBoundary}}--
 
 ### Get all signal records
