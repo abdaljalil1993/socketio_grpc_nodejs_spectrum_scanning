@@ -144,7 +144,8 @@ GRPC_SERVICE_TARGETS={
   "TETRAClassifier":"172.20.20.99:50063",
    "GSMClassifier":"172.20.20.99:50064",
   "SignalRecorder":"172.20.20.99:50065",
-  "DroneIDService":"172.20.20.99:5055"
+   "DroneIDService":"172.20.20.99:5055",
+   "ThreeGClassifier":"172.20.20.99:50069"
 }
 ```
 
@@ -153,7 +154,8 @@ GRPC_SERVICE_TARGETS={
 ```typescript
 // يقرأ GRPC_SERVICE_TARGETS تلقائياً
 const serviceTargets = {
-  DroneIDService: "172.20.20.99:5055"
+   DroneIDService: "172.20.20.99:5055",
+   ThreeGClassifier: "172.20.20.99:50069",
   // ... الخدمات الأخرى
 }
 ```

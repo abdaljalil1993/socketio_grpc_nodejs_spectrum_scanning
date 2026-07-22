@@ -82,6 +82,20 @@
       "responseStream": false
     },
     {
+      "serviceName": "ThreeGClassifier",
+      "methodName": "ClassifyUmts",
+      "requestEvent": "grpc:invoke:ThreeGClassifier.ClassifyUmts",
+      "responseEvent": "ThreeGClassifier.ClassifyUmts",
+      "responseStream": false
+    },
+    {
+      "serviceName": "ThreeGClassifier",
+      "methodName": "ScanBand",
+      "requestEvent": "grpc:invoke:ThreeGClassifier.ScanBand",
+      "responseEvent": "ThreeGClassifier.ScanBand",
+      "responseStream": false
+    },
+    {
       "serviceName": "GSMClassifier",
       "methodName": "ClassifyFrequency",
       "requestEvent": "grpc:invoke:GSMClassifier.ClassifyFrequency",
@@ -215,6 +229,8 @@
 20. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `LTEScanner.ScanBand`، أو يبدأ stream على `LTEScanner.ScanBandStream` مع acknowledgment أولًا.
 21. عندما يريد الفرونت بدء تسجيل إشارة أو متابعته أو تنزيل ملف التسجيل، يرسل أحد أحداث `SignalRecorder` مثل `grpc:invoke:SignalRecorder.StartRecording` أو `grpc:invoke:SignalRecorder.WatchRecording` أو `grpc:invoke:SignalRecorder.DownloadRecording` أو `grpc:invoke:SignalRecorder.DownloadRecordingData` أو `grpc:invoke:SignalRecorder.DownloadRecordingMeta`.
 22. الباك يستدعي الـ method المقابل على gRPC ويرجع إما نتيجة `unary` مثل `SignalRecorder.StartRecording` أو acknowledgment ثم stream مثل `SignalRecorder.WatchRecording` و `SignalRecorder.DownloadRecording` و `SignalRecorder.DownloadRecordingData` و `SignalRecorder.DownloadRecordingMeta`.
+23. عندما يريد الفرونت الكشف عن إشارات 3G UMTS، يرسل `grpc:invoke:ThreeGClassifier.ClassifyUmts` لفحص تردد واحد أو `grpc:invoke:ThreeGClassifier.ScanBand` لمسح نطاق كامل.
+24. الباك يستدعي الـ method المقابل على gRPC ويرجع نتيجة `unary` على `grpc:result` وأيضًا على event العمل نفسه مثل `ThreeGClassifier.ClassifyUmts` أو `ThreeGClassifier.ScanBand`.
 23. الباك يطلب الستريم الموافق من gRPC.
 24. الباك يعيد أولًا `grpc:result` كـ acknowledgment بأن الستريم بدأ أو أنه موجود مسبقًا.
 25. بعد ذلك تبدأ رسائل الداتا الفعلية بالوصول على event العمل نفسه مثل `IQStream.Subscribe` أو `SpectrumStream.SubscribeRTSpectrum` أو `LTEScanner.ScanBandStream` أو `SignalRecorder.WatchRecording` أو `SignalRecorder.DownloadRecording`.
@@ -548,6 +564,8 @@ Backend   -> DroneIDService.GetAntSDRStatus -> Frontend
 - `LTEScanner.ScanBand`
 - `LTEScanner.ScanBandStream`
 - `TETRAClassifier.ClassifyFrequency`
+- `ThreeGClassifier.ClassifyUmts`
+- `ThreeGClassifier.ScanBand`
 - `SignalRecorder.StartRecording`
 - `SignalRecorder.StopRecording`
 - `SignalRecorder.GetRecording`
@@ -595,6 +613,8 @@ Payload:
 - مثال صحيح: `deviceId`, `centerFreqHz`, `sampleRateHz`, `refLevelDbm`
 - مثال صحيح في خدمة DMR: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`
 - مثال صحيح في خدمة TETRA: `targetFreqHz`, `captureMs`, `deviceId`, `gainMode`, `gainTenthDb`, `earlyExitOnFirstFrame`, `maxFrames`
+- مثال صحيح في خدمة 3G ClassifyUmts: `targetFreqHz`, `captureMs`, `deviceId`, `bandHint`, `gain`, `ppm`
+- مثال صحيح في خدمة 3G ScanBand: `band`, `gain`, `ppm`, `deviceId`, `captureMs`, `sampleRateHz`
 - مثال صحيح في خدمة LTE ScanBand: `freqStartHz`, `freqEndHz`, `freqStepHz`, `deviceId`, `gainMode`, `gainTenthDb`, `ppm`, `numTry`, `disableTwisted`
 - مثال صحيح في خدمة SignalRecorder: `targetFreqHz`, `output`, `demod`, `durationMs`, `bandwidthHz`, `deviceId`, `sampleRateHz`, `label`, `gainTenthDb`, `gainManual`
 - مثال خاطئ: `device_id`, `center_freq_hz`, `sample_rate_hz`, `ref_level_dbm` ❌
@@ -1997,6 +2017,332 @@ Request payload:
 ```json
 {}
 ```
+
+---
+
+## 8) ThreeGClassifier — أحداث كشف وتحليل إشارات 3G (UMTS/WCDMA)
+
+هذه الخدمة مخصصة للكشف عن إشارات الجيل الثالث من الهاتف المحمول (UMTS/WCDMA) وتحليلها.
+
+**الخدمة**: `ThreeGClassifier`  
+**الحزمة**: `threeg_classifier.v1`  
+**الطرق المتاحة**: `ClassifyUmts` (unary)، `ScanBand` (unary)
+
+---
+
+### 8.1) `grpc:invoke:ThreeGClassifier.ClassifyUmts`
+
+فحص تردد واحد سريع للكشف عن إشارة UMTS/WCDMA عبر تحليل CPICH.
+
+**خريطة الحدث**:
+
+```text
+Frontend  -> grpc:invoke:ThreeGClassifier.ClassifyUmts -> Backend
+Backend   -> ThreeGClassifier.ClassifyUmts (gRPC unary) -> gRPC server
+gRPC      -> ClassifyFrequencyResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> ThreeGClassifier.ClassifyUmts -> Frontend
+```
+
+**Request payload** (يُرسل من الفرونت):
+
+```json
+{
+  "targetFreqHz": "2140000000",
+  "captureMs": 2000,
+  "deviceId": "device-001",
+  "bandHint": "BAND_2110_2170_MHZ",
+  "gain": 30.0,
+  "ppm": 0
+}
+```
+
+| الحقل | النوع | الوصف |
+|-------|-------|-------|
+| `targetFreqHz` | `string` (uint64) | التردد المستهدف بالهرتز |
+| `captureMs` | `number` (uint32) | مدة الالتقاط بالميلي ثانية |
+| `deviceId` | `string` | معرف الجهاز |
+| `bandHint` | `string` (UMTSBand enum) | تلميح النطاق لتسريع التحليل (اختياري) |
+| `gain` | `number` (float) | معامل الكسب |
+| `ppm` | `number` (int32) | تصحيح الانحراف الترددي |
+
+**قيم `bandHint` المتاحة (UMTSBand)**:
+
+| القيمة | الوصف |
+|--------|-------|
+| `UMTS_BAND_UNSPECIFIED` | غير محدد (افتراضي) |
+| `BAND_2110_2170_MHZ` | النطاق 2110–2170 ميغاهرتز (Band I) |
+| `BAND_1930_1990_MHZ` | النطاق 1930–1990 ميغاهرتز (Band II) |
+| `BAND_1805_1880_MHZ` | النطاق 1805–1880 ميغاهرتز (Band III) |
+| `BAND_869_894_MHZ` | النطاق 869–894 ميغاهرتز (Band V) |
+| `BAND_875_885_MHZ` | النطاق 875–885 ميغاهرتز (Band VI) |
+| `BAND_2620_2690_MHZ` | النطاق 2620–2690 ميغاهرتز (Band VII) |
+| `BAND_925_960_MHZ` | النطاق 925–960 ميغاهرتز (Band VIII) |
+| `BAND_1845_1880_MHZ` | النطاق 1845–1880 ميغاهرتز (Band IX) |
+| `BAND_1710_1770_MHZ` | النطاق 1710–1770 ميغاهرتز (Band X) |
+
+**Response payload** — يصل على `grpc:result` وعلى `ThreeGClassifier.ClassifyUmts`:
+
+```json
+{
+  "is_3g": true,
+  "snr": 18.4,
+  "signalStatus": "UMTS_CONFIRMED",
+  "error": ""
+}
+```
+
+| الحقل | النوع | الوصف |
+|-------|-------|-------|
+| `is_3g` | `boolean` | هل التردد يحمل إشارة 3G/UMTS؟ |
+| `snr` | `number` (float, optional) | نسبة الإشارة إلى الضوضاء بالديسيبل |
+| `signalStatus` | `string` (SignalStatus enum) | حالة الإشارة المكتشفة |
+| `error` | `string` | رسالة الخطأ إذا فشلت العملية |
+
+**ملاحظة مهمة على اسم الحقل `is_3g`**:
+
+يحتفظ هذا الحقل بالشرطة السفلية لأن اسمه في الـ proto هو `is_3g` وهو لا ينطبق عليه قاعدة camelCase العادية (الرقم `3` لا يُحوَّل)، لذلك يظهر في payload كـ `is_3g` وليس كـ `is3g`.
+
+**قيم `signalStatus` المتاحة (SignalStatus)**:
+
+| القيمة | الوصف |
+|--------|-------|
+| `SIGNAL_STATUS_UNSPECIFIED` | غير محدد |
+| `NO_CPICH` | لم يُكتشف CPICH (لا توجد إشارة UMTS) |
+| `CPICH_ONLY` | تم اكتشاف CPICH فقط، بدون SCH |
+| `CPICH_WEAK_SCH` | CPICH موجود مع ارتباط SCH ضعيف |
+| `UMTS_CONFIRMED` | CPICH + SCH مؤكدان = إشارة 3G حقيقية |
+| `DCCH` | تم اكتشاف Dedicated Channel |
+
+**مثال response على `grpc:result`**:
+
+```json
+{
+  "triggerEvent": "grpc:invoke:ThreeGClassifier.ClassifyUmts",
+  "service": "ThreeGClassifier",
+  "method": "ClassifyUmts",
+  "result": {
+    "mode": "unary",
+    "eventName": "ThreeGClassifier.ClassifyUmts",
+    "payload": {
+      "is_3g": true,
+      "snr": 18.4,
+      "signalStatus": "UMTS_CONFIRMED",
+      "error": ""
+    }
+  }
+}
+```
+
+---
+
+### 8.2) `grpc:invoke:ThreeGClassifier.ScanBand`
+
+مسح نطاق UMTS كامل والبحث عن جميع الخلايا النشطة.
+
+**خريطة الحدث**:
+
+```text
+Frontend  -> grpc:invoke:ThreeGClassifier.ScanBand -> Backend
+Backend   -> ThreeGClassifier.ScanBand (gRPC unary) -> gRPC server
+gRPC      -> ScanBandResponse -> Backend
+Backend   -> grpc:result -> Frontend
+Backend   -> ThreeGClassifier.ScanBand -> Frontend
+```
+
+**Request payload** (يُرسل من الفرونت):
+
+```json
+{
+  "band": "BAND_2110_2170_MHZ",
+  "gain": 30.0,
+  "ppm": 0,
+  "deviceId": "device-001",
+  "captureMs": 2000,
+  "sampleRateHz": 3840000
+}
+```
+
+| الحقل | النوع | الوصف |
+|-------|-------|-------|
+| `band` | `string` (UMTSBand enum) | النطاق المراد مسحه |
+| `gain` | `number` (float) | معامل الكسب |
+| `ppm` | `number` (int32) | تصحيح الانحراف الترددي |
+| `deviceId` | `string` | معرف الجهاز |
+| `captureMs` | `number` (uint32) | مدة الالتقاط لكل تردد (0 = 2000ms افتراضي) |
+| `sampleRateHz` | `number` (uint32) | معدل الأخذ بالعينات (0 = افتراضي الجهاز) |
+
+**Response payload** — يصل على `grpc:result` وعلى `ThreeGClassifier.ScanBand`:
+
+```json
+{
+  "cells": [
+    {
+      "freqHz": "2140000000",
+      "is_3g": true,
+      "signalStatus": "UMTS_CONFIRMED",
+      "snr": 18.4
+    },
+    {
+      "freqHz": "2145000000",
+      "is_3g": true,
+      "signalStatus": "CPICH_ONLY",
+      "snr": 9.1
+    },
+    {
+      "freqHz": "2150000000",
+      "is_3g": false,
+      "signalStatus": "NO_CPICH",
+      "snr": 0.0
+    }
+  ],
+  "error": "",
+  "scanDurationMs": 47320
+}
+```
+
+| الحقل | النوع | الوصف |
+|-------|-------|-------|
+| `cells` | `CellInfo[]` | قائمة الترددات المفحوصة مع نتائجها |
+| `error` | `string` | رسالة الخطأ إذا فشلت العملية |
+| `scanDurationMs` | `number` (int32) | مدة المسح الكلية بالميلي ثانية |
+
+**بنية `CellInfo`**:
+
+| الحقل | النوع | الوصف |
+|-------|-------|-------|
+| `freqHz` | `string` (uint64) | تردد الخلية بالهرتز |
+| `is_3g` | `boolean` | هل الخلية تحمل إشارة 3G؟ |
+| `signalStatus` | `string` (SignalStatus enum) | حالة الإشارة |
+| `snr` | `number` (float) | نسبة الإشارة إلى الضوضاء |
+
+**مثال response على `grpc:result`**:
+
+```json
+{
+  "triggerEvent": "grpc:invoke:ThreeGClassifier.ScanBand",
+  "service": "ThreeGClassifier",
+  "method": "ScanBand",
+  "result": {
+    "mode": "unary",
+    "eventName": "ThreeGClassifier.ScanBand",
+    "payload": {
+      "cells": [
+        {
+          "freqHz": "2140000000",
+          "is_3g": true,
+          "signalStatus": "UMTS_CONFIRMED",
+          "snr": 18.4
+        }
+      ],
+      "error": "",
+      "scanDurationMs": 47320
+    }
+  }
+}
+```
+
+---
+
+### 8.3) تحديث `grpc:methods` — الأحداث الجديدة
+
+بعد دمج `threeg_classifier.proto`، ستظهر الأحداث التالية تلقائيًا في حمولة `grpc:methods` عند الاتصال:
+
+```json
+{
+  "serviceName": "ThreeGClassifier",
+  "methodName": "ClassifyUmts",
+  "requestEvent": "grpc:invoke:ThreeGClassifier.ClassifyUmts",
+  "responseEvent": "ThreeGClassifier.ClassifyUmts",
+  "responseStream": false
+},
+{
+  "serviceName": "ThreeGClassifier",
+  "methodName": "ScanBand",
+  "requestEvent": "grpc:invoke:ThreeGClassifier.ScanBand",
+  "responseEvent": "ThreeGClassifier.ScanBand",
+  "responseStream": false
+}
+```
+
+---
+
+### 8.4) أحداث الاستماع المطلوبة في الفرونت
+
+لاستقبال نتائج ThreeGClassifier يجب على الفرونت الاستماع إلى:
+
+- `ThreeGClassifier.ClassifyUmts` — نتيجة فحص تردد واحد
+- `ThreeGClassifier.ScanBand` — نتائج مسح نطاق كامل
+
+بالإضافة إلى `grpc:result` و`grpc:error` كالمعتاد.
+
+---
+
+### 8.5) سيناريوهات الاستخدام في Postman
+
+**سيناريو 1: فحص تردد 2140 MHz**
+
+الحدث المرسل: `grpc:invoke:ThreeGClassifier.ClassifyUmts`
+
+```json
+{
+  "targetFreqHz": "2140000000",
+  "captureMs": 2000,
+  "deviceId": "device-001",
+  "bandHint": "BAND_2110_2170_MHZ",
+  "gain": 30.0,
+  "ppm": 0
+}
+```
+
+استمع على: `ThreeGClassifier.ClassifyUmts` و`grpc:result`
+
+---
+
+**سيناريو 2: مسح نطاق Band I كامل**
+
+الحدث المرسل: `grpc:invoke:ThreeGClassifier.ScanBand`
+
+```json
+{
+  "band": "BAND_2110_2170_MHZ",
+  "gain": 30.0,
+  "ppm": 0,
+  "deviceId": "device-001",
+  "captureMs": 2000,
+  "sampleRateHz": 0
+}
+```
+
+استمع على: `ThreeGClassifier.ScanBand` و`grpc:result`
+
+ملاحظة: `captureMs: 0` أو `sampleRateHz: 0` يعني استخدام القيم الافتراضية الخاصة بالجهاز.
+
+---
+
+**سيناريو 3: فحص سريع بدون تلميح النطاق**
+
+```json
+{
+  "targetFreqHz": "2112400000",
+  "captureMs": 1500,
+  "deviceId": "device-001",
+  "gain": 25.0,
+  "ppm": 2
+}
+```
+
+`bandHint` اختياري — يمكن حذفه وسيُجري الكلاسيفاير الفحص بدون تحسين النطاق.
+
+---
+
+### 8.6) ملاحظات توافق مهمة
+
+1. كلا الطريقتين `ClassifyUmts` و`ScanBand` هما `unary` وليستا `streaming` — لن يكون هناك `mode: "server-stream"` في `grpc:result`.
+2. الحقل `is_3g` يحتفظ بالشرطة السفلية في الـ payload (`is_3g` وليس `is3g`) بسبب آلية camelCase في protobufjs مع الأرقام.
+3. الحقل `targetFreqHz` و`freqHz` من نوع `uint64` يُرسلان كسلاسل نصية (`string`) وليس أرقام JavaScript.
+4. مهلة الانتظار الافتراضية لـ `ClassifyUmts` هي **45 ثانية** ولـ `ScanBand` هي **120 ثانية** — قابلة للتخصيص عبر متغير البيئة `GRPC_METHOD_TIMEOUTS`.
+5. قيمة `Verdict` غير موجودة في response — يُستخدم `is_3g` (boolean) مباشرة للحكم النهائي، و`signalStatus` للتفاصيل.
 
 أول رد يصل على `grpc:result` كـ acknowledgment.
 

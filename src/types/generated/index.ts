@@ -58,6 +58,14 @@ export type TetraClassifierV1GainMode = 'GAIN_MODE_UNSPECIFIED' | 'GAIN_MODE_AUT
 
 export type TetraClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_TETRA' | 'VERDICT_NOT_TETRA' | 'VERDICT_INCONCLUSIVE';
 
+export type ThreegClassifierV1Verdict = 'VERDICT_UNSPECIFIED' | 'VERDICT_3G' | 'VERDICT_NOT_3G' | 'VERDICT_INCONCLUSIVE';
+
+export type ThreegClassifierV1SignalStatus = 'SIGNAL_STATUS_UNSPECIFIED' | 'NO_CPICH' | 'CPICH_ONLY' | 'CPICH_WEAK_SCH' | 'UMTS_CONFIRMED' | 'DCCH';
+
+export type ThreegClassifierV1UMTSBand = 'UMTS_BAND_UNSPECIFIED' | 'BAND_2110_2170_MHZ' | 'BAND_1930_1990_MHZ' | 'BAND_1805_1880_MHZ' | 'BAND_869_894_MHZ' | 'BAND_875_885_MHZ' | 'BAND_2620_2690_MHZ' | 'BAND_925_960_MHZ' | 'BAND_1845_1880_MHZ' | 'BAND_1710_1770_MHZ';
+
+export type ThreegClassifierV1Speed = 'SPEED_UNSPECIFIED' | 'SPEED_FAST' | 'SPEED_NORMAL' | 'SPEED_DEEP' | 'SPEED_SLOW';
+
 export interface DmrClassifierV1ClassifyFrequencyRequest {
   targetFreqHz?: string;
   captureMs?: number;
@@ -775,5 +783,43 @@ export interface TetraClassifierV1TETRAEvidence {
   advertisedFreqHz?: string;
   timeToFirstFrameMs?: number;
   anyCallUnencrypted?: boolean;
+}
+
+export interface ThreegClassifierV1ClassifyFrequencyRequest {
+  targetFreqHz?: string;
+  captureMs?: number;
+  deviceId?: string;
+  bandHint?: ThreegClassifierV1UMTSBand;
+  gain?: number;
+  ppm?: number;
+}
+
+export interface ThreegClassifierV1ClassifyFrequencyResponse {
+  is_3g?: boolean;
+  snr?: number;
+  signalStatus?: ThreegClassifierV1SignalStatus;
+  error?: string;
+}
+
+export interface ThreegClassifierV1ScanBandRequest {
+  band?: ThreegClassifierV1UMTSBand;
+  gain?: number;
+  ppm?: number;
+  deviceId?: string;
+  captureMs?: number;
+  sampleRateHz?: number;
+}
+
+export interface ThreegClassifierV1CellInfo {
+  freqHz?: string;
+  is_3g?: boolean;
+  signalStatus?: ThreegClassifierV1SignalStatus;
+  snr?: number;
+}
+
+export interface ThreegClassifierV1ScanBandResponse {
+  cells: ThreegClassifierV1CellInfo[];
+  error?: string;
+  scanDurationMs?: number;
 }
 

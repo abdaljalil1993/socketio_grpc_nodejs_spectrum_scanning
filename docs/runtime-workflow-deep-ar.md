@@ -162,6 +162,7 @@ sequenceDiagram
 - `sdr_ingestion.*` يذهب افتراضياً إلى `GRPC_TARGET` على `50061`
 - `DMRClassifier` يذهب إلى `50062`
 - `TETRAClassifier` يذهب إلى `50063`
+- `ThreeGClassifier` يذهب إلى `50069`
 
 هذا مهم جداً لأن الباك هنا لا يرسل كل الخدمات إلى نفس الخادم بالضرورة.
 

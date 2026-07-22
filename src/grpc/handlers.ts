@@ -71,7 +71,11 @@ const methodTimeoutDefaults: Record<string, number> = {
   'gsm_classifier.v1.GSMClassifier.AnalyzeCell': 45_000,
   'gsm_classifier.v1.GSMClassifier.ScanBand': 120_000,
   'gsm_classifier.v1.GSMClassifier.ScanActivity': 120_000,
-  'gsm_classifier.v1.GSMClassifier.CalibratePPM': 120_000
+  'gsm_classifier.v1.GSMClassifier.CalibratePPM': 120_000,
+  'ThreeGClassifier.ClassifyUmts': 45_000,
+  'ThreeGClassifier.ScanBand': 120_000,
+  'threeg_classifier.v1.ThreeGClassifier.ClassifyUmts': 45_000,
+  'threeg_classifier.v1.ThreeGClassifier.ScanBand': 120_000
 };
 
 const resolveRequestTimeoutMs = (serviceName: string, fullServiceName: string, methodName: string): number => {

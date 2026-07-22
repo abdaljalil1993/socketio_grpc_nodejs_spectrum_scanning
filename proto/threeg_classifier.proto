@@ -1,0 +1,95 @@
+syntax = "proto3";
+package threeg_classifier.v1;
+
+// 3G Classifier — UMTS/WCDMA detection and analysis
+// Per-frequency yes/no "is this 3G (UMTS)?"
+// Extended with deep cell analysis via CPICH integration.
+
+service ThreeGClassifier {
+  // Unary one-shot. Fast CPICH detection (NumPy) + optional deep analysis.
+  rpc ClassifyUmts (ClassifyFrequencyRequest) returns (ClassifyFrequencyResponse);
+
+  // Full band scan. Sweeps UMTS bands and returns all detected cells.
+  rpc ScanBand (ScanBandRequest) returns (ScanBandResponse);
+}
+
+// ─────────── Enums ───────────
+
+enum Verdict {
+  VERDICT_UNSPECIFIED  = 0;
+  VERDICT_3G           = 1;
+  VERDICT_NOT_3G       = 2;
+  VERDICT_INCONCLUSIVE = 3;
+}
+
+enum SignalStatus {
+  SIGNAL_STATUS_UNSPECIFIED = 0;
+  NO_CPICH         = 1;  // No CPICH detected
+  CPICH_ONLY       = 2;  // CPICH detected, no SCH
+  CPICH_WEAK_SCH   = 3;  // CPICH + weak SCH correlation
+  UMTS_CONFIRMED   = 4;  // CPICH + SCH = real 3G signal
+  DCCH             = 5;  // Dedicated Channel detected
+}
+
+enum UMTSBand {
+  UMTS_BAND_UNSPECIFIED = 0;
+  BAND_2110_2170_MHZ = 1;
+  BAND_1930_1990_MHZ = 2;
+  BAND_1805_1880_MHZ = 3;
+  BAND_869_894_MHZ   = 5;
+  BAND_875_885_MHZ   = 6;
+  BAND_2620_2690_MHZ = 7;
+  BAND_925_960_MHZ   = 8;
+  BAND_1845_1880_MHZ = 9;
+  BAND_1710_1770_MHZ = 10;
+}
+
+enum Speed {
+  SPEED_UNSPECIFIED = 0;
+  SPEED_FAST        = 1;
+  SPEED_NORMAL      = 2;
+  SPEED_DEEP        = 3;
+  SPEED_SLOW        = 4;
+}
+
+// ─────────── ClassifyUmts ───────────
+
+message ClassifyFrequencyRequest {
+  uint64 target_freq_hz = 1;
+  uint32 capture_ms = 2;
+  string device_id = 3;
+  UMTSBand band_hint = 4;
+  float  gain = 5;
+  int32  ppm = 6;
+}
+
+message ClassifyFrequencyResponse {
+  bool    is_3g         = 1;
+  optional float snr    = 3;
+  SignalStatus signal_status = 4;
+  string error = 5;
+}
+
+// ─────────── ScanBand ───────────
+
+message ScanBandRequest {
+  UMTSBand band = 1;
+  float  gain = 2;
+  int32  ppm = 3;
+  string device_id = 8;
+  uint32 capture_ms = 9;  // per-frequency capture ms; 0/unset → 2000
+  uint32 sample_rate_hz = 10;  // 0/unset → per-device default
+}
+
+message ScanBandResponse {
+  repeated CellInfo cells = 1;
+  string error = 2;
+  int32  scan_duration_ms = 3;
+}
+
+message CellInfo {
+  uint64 freq_hz = 1;
+  bool   is_3g = 2;
+  SignalStatus signal_status = 10;
+  float  snr = 13;
+}

@@ -88,6 +88,18 @@ export const TetraClassifierV1GainModeSchema = z.enum(TetraClassifierV1GainModeV
 export const TetraClassifierV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_TETRA', 'VERDICT_NOT_TETRA', 'VERDICT_INCONCLUSIVE'] as const;
 export const TetraClassifierV1VerdictSchema = z.enum(TetraClassifierV1VerdictValues);
 
+export const ThreegClassifierV1VerdictValues = ['VERDICT_UNSPECIFIED', 'VERDICT_3G', 'VERDICT_NOT_3G', 'VERDICT_INCONCLUSIVE'] as const;
+export const ThreegClassifierV1VerdictSchema = z.enum(ThreegClassifierV1VerdictValues);
+
+export const ThreegClassifierV1SignalStatusValues = ['SIGNAL_STATUS_UNSPECIFIED', 'NO_CPICH', 'CPICH_ONLY', 'CPICH_WEAK_SCH', 'UMTS_CONFIRMED', 'DCCH'] as const;
+export const ThreegClassifierV1SignalStatusSchema = z.enum(ThreegClassifierV1SignalStatusValues);
+
+export const ThreegClassifierV1UMTSBandValues = ['UMTS_BAND_UNSPECIFIED', 'BAND_2110_2170_MHZ', 'BAND_1930_1990_MHZ', 'BAND_1805_1880_MHZ', 'BAND_869_894_MHZ', 'BAND_875_885_MHZ', 'BAND_2620_2690_MHZ', 'BAND_925_960_MHZ', 'BAND_1845_1880_MHZ', 'BAND_1710_1770_MHZ'] as const;
+export const ThreegClassifierV1UMTSBandSchema = z.enum(ThreegClassifierV1UMTSBandValues);
+
+export const ThreegClassifierV1SpeedValues = ['SPEED_UNSPECIFIED', 'SPEED_FAST', 'SPEED_NORMAL', 'SPEED_DEEP', 'SPEED_SLOW'] as const;
+export const ThreegClassifierV1SpeedSchema = z.enum(ThreegClassifierV1SpeedValues);
+
 export const DmrClassifierV1ClassifyFrequencyRequestSchema = z.lazy(() =>
   z.object({
     targetFreqHz: z.string().optional(),
@@ -969,6 +981,54 @@ export const TetraClassifierV1TETRAEvidenceSchema = z.lazy(() =>
   }),
 );
 
+export const ThreegClassifierV1ClassifyFrequencyRequestSchema = z.lazy(() =>
+  z.object({
+    targetFreqHz: z.string().optional(),
+    captureMs: z.number().int().optional(),
+    deviceId: z.string().optional(),
+    bandHint: ThreegClassifierV1UMTSBandSchema.optional(),
+    gain: z.number().optional(),
+    ppm: z.number().int().optional(),
+  }),
+);
+
+export const ThreegClassifierV1ClassifyFrequencyResponseSchema = z.lazy(() =>
+  z.object({
+    is_3g: z.boolean().optional(),
+    snr: z.number().optional(),
+    signalStatus: ThreegClassifierV1SignalStatusSchema.optional(),
+    error: z.string().optional(),
+  }),
+);
+
+export const ThreegClassifierV1ScanBandRequestSchema = z.lazy(() =>
+  z.object({
+    band: ThreegClassifierV1UMTSBandSchema.optional(),
+    gain: z.number().optional(),
+    ppm: z.number().int().optional(),
+    deviceId: z.string().optional(),
+    captureMs: z.number().int().optional(),
+    sampleRateHz: z.number().int().optional(),
+  }),
+);
+
+export const ThreegClassifierV1CellInfoSchema = z.lazy(() =>
+  z.object({
+    freqHz: z.string().optional(),
+    is_3g: z.boolean().optional(),
+    signalStatus: ThreegClassifierV1SignalStatusSchema.optional(),
+    snr: z.number().optional(),
+  }),
+);
+
+export const ThreegClassifierV1ScanBandResponseSchema = z.lazy(() =>
+  z.object({
+    cells: z.array(ThreegClassifierV1CellInfoSchema).default([]),
+    error: z.string().optional(),
+    scanDurationMs: z.number().int().optional(),
+  }),
+);
+
 export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'dmr_classifier.v1.ClassifyFrequencyRequest': DmrClassifierV1ClassifyFrequencyRequestSchema,
   'dmr_classifier.v1.ClassifyFrequencyResponse': DmrClassifierV1ClassifyFrequencyResponseSchema,
@@ -1051,5 +1111,10 @@ export const schemaRegistry: Record<string, z.ZodTypeAny> = {
   'tetra_classifier.v1.ClassifyFrequencyRequest': TetraClassifierV1ClassifyFrequencyRequestSchema,
   'tetra_classifier.v1.ClassifyFrequencyResponse': TetraClassifierV1ClassifyFrequencyResponseSchema,
   'tetra_classifier.v1.TETRAEvidence': TetraClassifierV1TETRAEvidenceSchema,
+  'threeg_classifier.v1.CellInfo': ThreegClassifierV1CellInfoSchema,
+  'threeg_classifier.v1.ClassifyFrequencyRequest': ThreegClassifierV1ClassifyFrequencyRequestSchema,
+  'threeg_classifier.v1.ClassifyFrequencyResponse': ThreegClassifierV1ClassifyFrequencyResponseSchema,
+  'threeg_classifier.v1.ScanBandRequest': ThreegClassifierV1ScanBandRequestSchema,
+  'threeg_classifier.v1.ScanBandResponse': ThreegClassifierV1ScanBandResponseSchema,
 };
 

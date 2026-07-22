@@ -24,7 +24,8 @@ export const protoRegistry = {
   "src/proto/lte_scanner.proto",
   "src/proto/sdr.proto",
   "src/proto/signal_recorder.proto",
-  "src/proto/tetra_classifier.proto"
+  "src/proto/tetra_classifier.proto",
+  "src/proto/threeg_classifier.proto"
 ],
   services: [
   {
@@ -404,6 +405,31 @@ export const protoRegistry = {
         "eventName": "TETRAClassifier.ClassifyFrequency"
       }
     ]
+  },
+  {
+    "packageName": "threeg_classifier.v1",
+    "serviceName": "ThreeGClassifier",
+    "fullServiceName": "threeg_classifier.v1.ThreeGClassifier",
+    "methods": [
+      {
+        "methodName": "ClassifyUmts",
+        "requestType": "threeg_classifier.v1.ClassifyFrequencyRequest",
+        "responseType": "threeg_classifier.v1.ClassifyFrequencyResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 6,
+        "eventName": "ThreeGClassifier.ClassifyUmts"
+      },
+      {
+        "methodName": "ScanBand",
+        "requestType": "threeg_classifier.v1.ScanBandRequest",
+        "responseType": "threeg_classifier.v1.ScanBandResponse",
+        "requestStream": false,
+        "responseStream": false,
+        "requestFieldCount": 6,
+        "eventName": "ThreeGClassifier.ScanBand"
+      }
+    ]
   }
 ],
   eventNames: [
@@ -441,6 +467,8 @@ export const protoRegistry = {
   "SignalRecorder.DownloadRecording",
   "SignalRecorder.DownloadRecordingData",
   "SignalRecorder.DownloadRecordingMeta",
-  "TETRAClassifier.ClassifyFrequency"
+  "TETRAClassifier.ClassifyFrequency",
+  "ThreeGClassifier.ClassifyUmts",
+  "ThreeGClassifier.ScanBand"
 ]
 } as const;
